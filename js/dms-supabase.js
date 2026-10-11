@@ -1704,20 +1704,45 @@ try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(
       else { L.push({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: r.name || '', email: e, phone: r.phone || '', title: r.title || '', dept: r.dept || '', status: 'active' }); add++; } });
     save(); audit(label, add + ' جديد، ' + upd + ' تحديث', ''); toast('أُضيف ' + add + ' وحُدّث ' + upd); refresh();
   }
+  /* تنظيف الخلية من علامات الاتجاه المخفية والمسافات (تأتي من النسخ من Excel أو Word) */
+  const dClean = (c) => String(c == null ? '' : c).replace(/[‎‏‪-‮⁦-⁩﻿ ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const dDeptClean = (c) => dClean(c).replace(/^قسم\s+/, '');
+  /* الجوال بصيغة موحّدة 05XXXXXXXX متى أمكن */
+  const dPhoneStd = (p) => { let d = dDigits(p); if (d.startsWith('00966')) d = d.slice(5); else if (d.startsWith('966') && d.length === 12) d = d.slice(3); return /^5\d{8}$/.test(d) ? '0' + d : d; };
   function dirParse(rows) {
-    rows = rows.map((r) => r.map((c) => String(c == null ? '' : c).trim())).filter((r) => r.some(Boolean)); if (!rows.length) return [];
+    rows = rows.map((r) => r.map(dClean)).filter((r) => r.some(Boolean)); if (!rows.length) return [];
     const head = rows[0].some((c) => /اسم|name|بريد|mail|جوال|phone/i.test(c)) && !rows[0].some((c) => /@/.test(c));
     let iN = -1, iE = -1, iP = -1, iT = -1, iD = -1;
     if (head) { const H = rows[0]; iN = H.findIndex((h) => /الاسم|اسم العضو|^name/i.test(h)); iE = H.findIndex((h) => /بريد|ايميل|إيميل|mail/i.test(h)); iP = H.findIndex((h) => /جوال|هاتف|موبايل|phone|mobile/i.test(h));
       iT = H.findIndex((h) => /المسمى|الرتبة|الدرجة|title/i.test(h)); iD = H.findIndex((h) => /القسم|dept/i.test(h)); rows = rows.slice(1); }
+    const known = deptList().map(dNameN), isDept = (c) => /^قسم\s/.test(c) || known.includes(dNameN(c));
     return rows.map((r) => { const email = iE >= 0 ? r[iE] : (r.find((c) => /@/.test(c)) || ''), phone = iP >= 0 ? r[iP] : (r.find((c) => /^[+\d٠-٩][\d٠-٩\s-]{6,}$/.test(c)) || '');
-      const name = iN >= 0 ? r[iN] : (r.filter((c) => c && c !== email && c !== phone && /[\u0621-\u064A]/.test(c)).sort((a, b) => b.length - a.length)[0] || '');
-      return { name, email, phone: phone.replace(/\s+/g, ''), title: iT >= 0 ? r[iT] : '', dept: iD >= 0 ? r[iD] : '' }; }).filter((x) => x.name || x.email);
+      /* بلا صف عناوين: خلية «قسم …» هي القسم، والاسم أطول خلية عربية غيرها */
+      const dept = iD >= 0 ? r[iD] : (r.find((c) => c && c !== email && c !== phone && isDept(c)) || '');
+      const name = iN >= 0 ? r[iN] : (r.filter((c) => c && c !== email && c !== phone && c !== dept && /[ء-ي]/.test(c)).sort((a, b) => b.length - a.length)[0] || '');
+      return { name, email: dMail(email), phone: phone ? dPhoneStd(phone) : '', title: iT >= 0 ? r[iT] : '', dept: dept ? dDeptClean(dept) : '' }; }).filter((x) => x.name || x.email);
+  }
+  /* معاينة قبل الحفظ: الجديد والمحدَّث، مع تنبيه على الجوال غير الصحيح أو المكرر والبريد الناقص */
+  function dirPreview(rows, label) {
+    const L = DIR(), cnt = (k) => rows.reduce((m, r) => { if (r[k]) m[r[k]] = (m[r[k]] || 0) + 1; return m; }, {}), cP = cnt('phone'), cE = cnt('email');
+    const R = rows.map((r) => { const ex = L.find((x) => (r.email && dMail(x.email) === r.email) || (r.name && dNameN(x.name) === dNameN(r.name))), w = [];
+      if (!r.email) w.push('بلا بريد (لن يُنشأ له حساب)'); else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) w.push('البريد غير صحيح'); else if (cE[r.email] > 1) w.push('البريد مكرر في الملف');
+      if (!r.phone) w.push('بلا جوال'); else if (!/^05\d{8}$/.test(r.phone)) w.push('الجوال غير صحيح (' + r.phone.length + ' أرقام)');
+      if (r.phone && cP[r.phone] > 1) w.push('الجوال نفسه لعضو آخر في الملف'); else if (r.phone && L.some((x) => x !== ex && dPhoneStd(x.phone) === r.phone)) w.push('الجوال مسجّل لعضو آخر في الدليل');
+      return { r, ex, w }; });
+    const nw = R.filter((x) => !x.ex).length, wn = R.filter((x) => x.w.length).length;
+    const ov = overlay(`<div class="panel" style="width:min(980px,97vw);margin:0;max-height:92vh;overflow:auto"><h3>معاينة ${esc(label)} (${rows.length})</h3><div class="body">
+      <p class="small" style="margin-top:0">جديد: <b>${nw}</b> · تحديث عضو موجود: <b>${rows.length - nw}</b>${wn ? ` · <b class="bad">${wn} صفًا فيها تنبيه</b> (راجعها؛ يمكنك الحفظ ثم تصحيحها من «تعديل»)` : ''}. اسم المستخدم هو البريد، وكلمة المرور الأولية رقم الجوال بدون الصفر.</p>
+      <div class="tbl-wrap" style="max-height:60vh;overflow:auto"><table class="t"><tr><th>#</th><th>الاسم</th><th>القسم</th><th>البريد</th><th>الجوال</th><th>الحالة</th><th>تنبيه</th></tr>
+      ${R.map((x, i) => `<tr${x.w.length ? ' style="background:#FFF4E5"' : ''}><td>${i + 1}</td><td>${esc(x.r.name)}</td><td class="small">${esc(x.r.dept || '—')}</td><td dir="ltr" class="small">${esc(x.r.email || '—')}</td><td dir="ltr" class="small">${esc(x.r.phone || '—')}</td><td class="small">${x.ex ? 'تحديث' : '<span class="good">جديد</span>'}</td><td class="small bad">${esc(x.w.join('، '))}</td></tr>`).join('')}</table></div>
+      <div style="display:flex;gap:8px;margin-top:10px"><button class="btn primary" id="dpOk">حفظ في الدليل</button><button class="btn" id="dpNo">إلغاء</button></div></div></div>`);
+    ov.querySelector('#dpNo').onclick = () => ov.remove();
+    ov.querySelector('#dpOk').onclick = () => { ov.remove(); dirMerge(rows, label); };
   }
   window.dmsDirImport = async function (f) { if (!f || !isAdmin()) return; try { await ensureXLSX(); const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
-      const rows = dirParse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' })); if (!rows.length) { toast('لم أجد أسماء في الملف'); return; } dirMerge(rows, 'استيراد الدليل من Excel'); }
+      const rows = dirParse(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false })); if (!rows.length) { toast('لم أجد أسماء في الملف'); return; } dirPreview(rows, 'استيراد الدليل من Excel'); }
     catch (e) { toast('تعذرت قراءة الملف'); } };
-  window.dmsDirPaste = function () { const t = document.getElementById('dirPaste'); if (!t || !t.value.trim()) return; const rows = dirParse(t.value.split(/\r?\n/).map((l) => l.split(/\t|;/))); if (!rows.length) { toast('الصق جدولًا فيه الأسماء'); return; } dirMerge(rows, 'لصق الدليل من Excel'); };
+  window.dmsDirPaste = function () { const t = document.getElementById('dirPaste'); if (!t || !t.value.trim()) return; const rows = dirParse(t.value.split(/\r?\n/).map((l) => l.split(/\t|;/))); if (!rows.length) { toast('الصق جدولًا فيه الأسماء'); return; } dirPreview(rows, 'لصق الدليل من Excel'); };
   window.dmsDirExport = async function () { await exportXlsx('دليل_أعضاء_هيئة_التدريس_' + today(), [['الدليل', [['الاسم', 'المسمى', 'القسم', 'البريد الإلكتروني', 'الجوال', 'الحالة', 'اسم الدخول', 'اللجان والأدوار']].concat(DIR().map((m) => { const a = dAccount(m);
       return [m.name, m.title || '', m.dept || '', m.email || '', m.phone || '', (ST[m.status || 'active'] || ST.active)[0], a ? a.email : '', a ? Object.entries(a.memberships || {}).map(([c, r]) => commName(c) + ' (' + ROLE_AR[r] + ')').join('، ') : '']; }))]]); };
   /* إنشاء حساب موحّد لعضو */
@@ -1805,7 +1830,7 @@ try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button class="btn primary" onclick="dmsDirEdit('')">+ إضافة عضو</button><button class="btn" onclick="dmsDirExport()">⬇️ تصدير Excel</button>
         <label class="btn">⬆️ استيراد Excel<input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="dmsDirImport(this.files[0]);this.value=''"></label>
         ${fDept}${fSt}<input placeholder="بحث بالاسم أو البريد أو الجوال" value="${esc(DUI.q)}" onchange="dmsDirF('q',this.value)" style="flex:1;min-width:180px"></div>
-      <details style="margin-bottom:10px"><summary class="small">لصق من Excel (الاسم، المسمى، القسم، البريد، الجوال: بأي ترتيب مع صف العناوين)</summary>
+      <details style="margin-bottom:10px"><summary class="small">لصق من Excel (الاسم، القسم، الجوال، البريد، المسمى: بأي ترتيب، بصف عناوين أو بدونه)</summary>
         <textarea id="dirPaste" rows="4" style="width:100%;margin-top:6px" placeholder="الاسم	القسم	البريد الإلكتروني	الجوال"></textarea><button class="btn sm primary" onclick="dmsDirPaste()">مطابقة وتطبيق</button></details>
       <div class="tbl-wrap" style="max-height:440px;overflow:auto"><table class="t"><tr><th>الاسم</th><th>القسم</th><th>البريد (اسم المستخدم)</th><th>الجوال</th><th>الحالة</th><th>اللجان والأدوار</th><th></th></tr>
       ${rows.map((m) => { const a = dAccount(m), s2 = ST[m.status || 'active'] || ST.active, mm = a ? Object.entries(a.memberships || {}) : [];
