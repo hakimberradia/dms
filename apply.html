@@ -50,7 +50,7 @@ footer{text-align:center;color:var(--soft);font-size:15px;margin:20px 0}
 <header><div class="in"><h1 id="org">اختيار جهة التدريب</h1><p id="term"></p></div></header>
 <main>
   <div id="boot" class="card">جارٍ التحميل…</div>
-  <nav class="tabs hide" id="tabs" aria-label="نوع الطلب"><button type="button" id="tChoose" aria-pressed="true">اختيار جهة تدريب من القائمة</button><button type="button" id="tAppr" aria-pressed="false">طلب خطاب موافقة من جهة تدريب</button></nav>
+  <nav class="tabs hide" id="tabs" aria-label="نوع الطلب" style="display:none"><button type="button" id="tChoose" aria-pressed="true">اختيار جهة تدريب من القائمة</button><button type="button" id="tAppr" aria-pressed="false">طلب خطاب موافقة من جهة تدريب</button></nav>
   <section id="appr" class="hide">
     <div class="card">
       <h2>طلب خطاب موافقة من جهة تدريب</h2>
@@ -204,13 +204,18 @@ footer{text-align:center;color:var(--soft);font-size:15px;margin:20px 0}
     try { await loadPub(); } catch (e) { $('boot').innerHTML = box('err', 'تعذّر تحميل البيانات: ' + esc(e.message || e)); return; }
     show('boot', false); header();
     const apprOpen = !!(PUB.appr && PUB.appr.open), chooseOpen = !!PUB.agencies;
-    if (!chooseOpen && !apprOpen) { $('closed').innerHTML = box('err', ERR.no_portal); show('closed', true); return; }
-    if (apprOpen) { show('tabs', true); $('tChoose').onclick = () => setTab('choose'); $('tAppr').onclick = () => setTab('appr');
-      if (!chooseOpen) $('tChoose').style.display = 'none'; }
-    const wantAppr = apprOpen && (!chooseOpen || new URLSearchParams(location.search).get('m') === 'approval');
-    show('step1', !wantAppr); if (wantAppr) setTab('appr');
+    /* لكل خدمة رابطها: رابط اختيار الجهة لا يعرض طلب خطاب الموافقة، ورابط خطاب الموافقة (m=approval) لا يعرض اختيار الجهة */
+    const wantAppr = new URLSearchParams(location.search).get('m') === 'approval';
+    show('tabs', false); $('tabs').style.display = 'none';   /* .tabs{display:flex} كانت تتغلب على .hide فتظهر الخانتان دائمًا */
+    if (wantAppr) {
+      if (!apprOpen) { $('closed').innerHTML = box('err', 'استقبال طلبات خطاب الموافقة مغلق حاليًا. تابع إعلانات لجنة التدريب.'); show('closed', true); show('step1', false); return; }
+      setTab('appr'); show('step1', false);
+    } else {
+      if (!chooseOpen) { $('closed').innerHTML = box('err', ERR.no_portal); show('closed', true); return; }
+      show('appr', false); show('step1', true);
+    }
     const saved = (() => { try { return localStorage.getItem(uidKey) || ''; } catch (e) { return ''; } })();
-    if (saved) { $('uid').value = saved; lookup(saved, true).catch(() => {}); }
+    if (saved && !wantAppr) { $('uid').value = saved; lookup(saved, true).catch(() => {}); }
     TIMER = setInterval(refresh, 30000); document.addEventListener('visibilitychange', refresh);
   }
   $('aGo').onclick = async () => { const v = $('aUid').value.trim(); if (!v) { $('aE1').innerHTML = box('err', ERR.invalid); return; }
