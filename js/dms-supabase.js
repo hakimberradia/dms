@@ -1655,10 +1655,10 @@ try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(
   window.DMS_DIRECTORY = () => JSON.parse(JSON.stringify(DIR().map((m) => ({ name: m.name, email: m.email || '', phone: m.phone || '', title: m.title || '', dept: m.dept || '', status: m.status || 'active' }))));
   /* هوية المستخدم الحالي للأنظمة (الدخول الموحّد) */
   window.DMS_ME = () => { if (!ME) return null; const m = DIR().find((x) => (ME.email && dMail(x.email) === dMail(ME.email)) || dNameN(x.name) === dNameN(ME.name)) || {};
-    return { name: ME.name, email: dMail(ME.email), phone: m.phone || '', dept: m.dept || '', isAdmin: !!ME.isAdmin, memberships: Object.assign({}, ME.memberships || {}), subRoles: Object.assign({}, (DB.settings.appRoles || {})[dMail(ME.email)] || {}), scope: SCOPE }; };
+    return { name: ME.name, email: dMail(ME.email), phone: m.phone || '', dept: m.dept || '', isAdmin: !!ME.isAdmin, collegeRole: ME.collegeRole || '', memberships: Object.assign({}, ME.memberships || {}), subRoles: Object.assign({}, (DB.settings.appRoles || {})[dMail(ME.email)] || {}), scope: SCOPE }; };
   const DUI = { q: '', comm: '', dept: '', st: '' };
   /* أدوار فرعية لبعض البرامج: تُحدَّد من الموقع، ويقرؤها البرنامج */
-  const SUBR = { readiness: [['committee', 'عضو لجنة الجاهزية']] };
+  const SUBR = { readiness: [['committee', 'عضو لجنة الجاهزية']], training: [['bach', 'عضو — البكالوريوس فقط'], ['dip', 'عضو — الدبلوم العالي فقط']] };
   /* قياس مخرجات التعلم: الصفة تُحدَّد هنا مرة واحدة، والبرنامج يعرض لكل صفة مهامها */
   const CLO_SUBR = [['quality', 'دكتور + عضو لجنة الجودة'], ['pcoord', 'دكتور + منسق البرنامج'], ['pcoordq', 'دكتور + منسق البرنامج + لجنة الجودة']];
   const isCloApp = (k) => k === 'clo' || /مخرجات\s*التعلم/.test(String((allApps()[k] || {}).name || ''));
@@ -1671,6 +1671,9 @@ try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(
   const roleLabel = (email, cid, r) => { const sb = r === 'member' ? subOf(email, cid) : ''; const o = sb && subOpts(cid).find(([v]) => v === sb); return o ? o[1] : ROLE_AR[r]; };
   function setSub(email, cid, v) { const A = appRoles(), e = dMail(email); A[e] = A[e] || {}; if (v) A[e][cid] = v; else delete A[e][cid]; if (!Object.keys(A[e]).length) delete A[e]; }
   /* قائمة أعضاء برنامج من الموقع: يقرؤها البرنامج ليحدد مهامهم قبل أول دخول */
+  /* عميد الكلية ووكلاؤها من «دور الكلية» في حسابات الموقع: تقرؤهم الأنظمة (مثل اعتماد العميد في نظام التدريب) */
+  window.DMS_DEANS = (kind) => DB.users.filter((u) => u.active !== false && u.collegeRole === (kind || 'dean')).map((u) => { const m = DIR().find((x) => dMail(x.email) === dMail(u.email)) || {};
+    return { name: u.name, email: dMail(u.email), phone: m.phone || '', title: u.title || m.title || '' }; });
   window.DMS_MEMBERS = (appKey) => { const cs = appComms(appKey); return DB.users.filter((u) => u.active !== false && cs.some((c) => (u.memberships || {})[c])).map((u) => {
     const rs = cs.map((c) => u.memberships[c]).filter(Boolean), m = DIR().find((x) => dMail(x.email) === dMail(u.email)) || {};
     return { name: u.name, email: dMail(u.email), phone: m.phone || '', isAdmin: !!u.isAdmin, role: rs.includes('chair') ? 'chair' : rs.includes('member') ? 'member' : 'viewer', sub: cs.map((c) => subOf(u.email, c)).find(Boolean) || '' }; }); };
