@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>النسخ الاحتياطي الكامل والتحقق</title>
+<script src="config.js"></script>
+<style>
+:root{--p:#6A3FB5;--pd:#4A2A8C;--bg:#F7F4FC;--line:#E3DAF3;--ink:#1E1240;--ok:#1b6e2a;--bad:#b42318;--warn:#9a5b00}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Tajawal','Segoe UI',Tahoma,sans-serif;line-height:1.7}
+header{background:linear-gradient(90deg,var(--pd),var(--p));color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.9;font-size:14px}
+main{max-width:980px;margin:0 auto;padding:18px 16px 60px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px;box-shadow:0 6px 18px rgba(74,42,140,.06)}
+.card h2{margin:0 0 8px;font-size:18px}
+label{display:block;font-size:14px;margin:8px 0 4px}
+input[type=text],input[type=password]{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:16px;font-family:inherit}
+button{font-family:inherit;font-size:15px;font-weight:700;border-radius:10px;padding:10px 18px;border:1.5px solid var(--p);background:var(--p);color:#fff;cursor:pointer}
+button.o{background:#fff;color:var(--p)}button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.log{background:#1E1240;color:#E9E2FA;border-radius:10px;padding:10px 12px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;max-height:320px;overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:right}th{background:#F1ECFA}
+.ok{color:var(--ok);font-weight:700}.bad{color:var(--bad);font-weight:700}.warn{color:var(--warn);font-weight:700}
+.note{background:#FFF8E6;border:1px solid #F0D48A;border-radius:10px;padding:8px 12px;font-size:13.5px}
+.hidden{display:none}
+.big{font-size:17px}
+</style>
+</head>
+<body>
+<header><h1>🛡️ النسخ الاحتياطي الكامل والتحقق منه</h1><p>«النسخة الأصلية قبل توحيد برنامج الجاهزية» — صفحة مستقلة لا تعدّل أي بيانات؛ تقرأ فقط وتنزّل ملفًا على جهازك.</p></header>
+<main>
+  <div class="card" id="cLogin">
+    <h2>1) الدخول بحساب مالك النظام</h2>
+    <p style="margin:0;font-size:14px">النسخة الكاملة تحتاج صلاحية المالك ليقرأ النظام بيانات كل الأقسام. كلمة المرور لا تُحفظ في الصفحة.</p>
+    <label>اسم المستخدم</label><input type="text" id="u" dir="ltr" autocomplete="username">
+    <label>كلمة المرور</label><input type="password" id="pw" dir="ltr" autocomplete="current-password">
+    <div class="row" style="margin-top:12px"><button id="bLogin">دخول</button><span id="lgMsg"></span></div>
+  </div>
+
+  <div class="card hidden" id="cBackup">
+    <h2>2) أخذ النسخة الكاملة</h2>
+    <p style="margin:0;font-size:14px">تشمل: كل جداول قاعدة البيانات (الأقسام، اللجان، المستخدمون وصلاحياتهم، المهام، بيانات الأنظمة المدمجة لكل قسم ومنها الجاهزية بطلابها وبنك أسئلتها واختباراتها ونتائجها ودوراتها وحضورها، والتدريب، والاختبارات الإلكترونية ونتائجها، وسجل التدقيق)، وكل الملفات المخزنة (المرفقات، وإصدارات الأنظمة، وصور الأسئلة)، مع بصمة تحقق (SHA-256) لكل جزء.</p>
+    <div class="row" style="margin-top:10px"><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="withApps" checked> تضمين ملفات إصدارات الأنظمة المرفوعة (أكبر حجمًا)</label></div>
+    <div class="row" style="margin-top:12px"><button id="bRun" class="big">⬇️ أخذ النسخة الكاملة الآن</button><span id="runMsg"></span></div>
+    <div class="log hidden" id="log"></div>
+    <div id="sum"></div>
+  </div>
+
+  <div class="card">
+    <h2>3) التحقق من سلامة ملف نسخة</h2>
+    <p style="margin:0;font-size:14px">اختر ملف النسخة (ZIP) الذي نزّلته. تُعاد حساب بصمة كل جزء وتُقارن بالبصمة المسجلة لحظة النسخ، ويُتحقق من أن ملف الاستعادة المتوافق مع الموقع سليم ومطابق للجداول. الفحص يتم على جهازك فقط ولا يُرفع الملف لأي مكان، ولا يحتاج دخولًا.</p>
+    <div class="row" style="margin-top:10px"><input type="file" id="fChk" accept=".zip"><button id="bChk" class="o">فحص الملف</button></div>
+    <div id="chk"></div>
+  </div>
+
+  <div class="card hidden" id="cImg">
+    <h2>4) استعادة صور الأسئلة وملفات لا تشملها الاستعادة المعتادة</h2>
+    <p style="margin:0;font-size:14px">الاستعادة المعتادة للجداول والمرفقات وإصدارات الأنظمة من الموقع نفسه: «الإعدادات العامة ← النسخ الاحتياطي ← الاستعادة من نسخة شاملة» باختيار الملف <b>dms-full-backup.json</b> من داخل الـ ZIP. هذا القسم يكمّلها بإرجاع صور الأسئلة <b>المفقودة فقط</b> (لا يستبدل الموجود).</p>
+    <div class="row" style="margin-top:10px"><input type="file" id="fImg" accept=".zip"><button id="bImg" class="o">استعادة الصور المفقودة</button></div>
+    <div class="log hidden" id="logImg"></div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+  'use strict';
+  const CFG = window.DMS_CONFIG || {}, $ = id => document.getElementById(id);
+  const TOOL_VERSION = 'backup-2.0';
+  /* كل جداول المخطط (0001 إلى 0012) */
+  const TABLES = ['settings','departments','committees','profiles','memberships','app_versions','custom_apps','tasks','kpis','visits','clo','files','templates',
+    'initiatives','events','goals','college_events','notifs','activity_log','audit_log','app_storage','app_storage_sig','online_exams','online_submissions','online_progress',
+    'dept_settings','training_portal','training_requests','training_status','training_approvals','pw_reset_requests'];
+  /* الجداول التي يفهمها ملف الاستعادة الموجود في الموقع (الإصدار 1) */
+  const COMPAT = ['settings','departments','committees','profiles','memberships','app_versions','custom_apps','tasks','kpis','visits','clo','files','templates','initiatives',
+    'events','goals','college_events','notifs','activity_log','app_storage','online_exams','online_submissions','dept_settings','training_portal','training_requests','training_status','training_approvals'];
+  const ORDER = {memberships:['user_app_id','committee_id'], app_versions:['app_key'], app_storage:['app_key','scope','key'], app_storage_sig:['app_key','scope','key'],
+    dept_settings:['dept_id'], training_requests:['key'], training_approvals:['key'], training_status:['portal','h'], online_progress:['online_exam_id','student_uid']};
+  const BUCKETS = ['files','apps','rd-img'];
+  let sb = null, ME = null;
+  const enc = new TextEncoder();
+  async function sha(buf){ const d = await crypto.subtle.digest('SHA-256', typeof buf === 'string' ? enc.encode(buf) : buf); return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+  function logTo(el, t, cls){ el.classList.remove('hidden'); const s = document.createElement('div'); if (cls) s.className = cls; s.textContent = t; el.appendChild(s); el.scrollTop = el.scrollHeight; }
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  function client(){
+    if (sb) return sb;
+    if (!window.supabase || !CFG.supabaseUrl || !CFG.supabaseAnonKey) throw new Error('تعذّر تحميل إعدادات الاتصال (config.js) أو مكتبة Supabase. افتح الصفحة من رابط الموقع نفسه.');
+    sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {auth:{persistSession:false, autoRefreshToken:true}});
+    return sb;
+  }
+  $('bLogin').onclick = async () => {
+    const msg = $('lgMsg'); msg.textContent = 'جارٍ التحقق…'; msg.className = '';
+    try {
+      const c = client(), un = $('u').value.trim().toLowerCase(), email = un.includes('@') ? un : un + '@' + (CFG.emailDomain || 'dms.local');
+      const { data, error } = await c.auth.signInWithPassword({ email, password:$('pw').value });
+      if (error) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة.');
+      const { data:p, error:e2 } = await c.from('profiles').select('app_id,username,name,is_admin').eq('id', data.user.id).maybeSingle();
+      if (e2 || !p) throw new Error('تعذّر قراءة الحساب.');
+      if (!p.is_admin) { await c.auth.signOut(); throw new Error('هذا الحساب ليس حساب مالك النظام. النسخة الكاملة تحتاج حساب المالك.'); }
+      ME = p; $('pw').value = ''; msg.textContent = '✓ مرحبًا ' + p.name; msg.className = 'ok';
+      $('cBackup').classList.remove('hidden'); $('cImg').classList.remove('hidden'); $('cLogin').querySelectorAll('input,button').forEach(x => x.disabled = true);
+    } catch (e) { msg.textContent = e.message || String(e); msg.className = 'bad'; }
+  };
+
+  async function countOf(t){ const { count, error } = await sb.from(t).select('*', {count:'exact', head:true}); if (error) throw error; return count; }
+  async function fetchTable(t){
+    const total = await countOf(t);
+    if (total <= 1000) { const { data, error } = await sb.from(t).select('*').range(0, 999); if (error) throw error; return {rows:data || [], total}; }
+    const cols = ORDER[t] || ['id']; let out = [];
+    for (let from = 0; from < total + 1000; from += 1000) {
+      let q = sb.from(t).select('*'); cols.forEach(c => { q = q.order(c, {ascending:true}); });
+      const { data, error } = await q.range(from, from + 999); if (error) throw error;
+      out = out.concat(data || []); if (!data || data.length < 1000) break;
+    }
+    return {rows:out, total};
+  }
+  async function listAll(bucket, prefix, acc){
+    acc = acc || [];
+    for (let off = 0; ; off += 1000) {
+      const { data, error } = await sb.storage.from(bucket).list(prefix || '', {limit:1000, offset:off, sortBy:{column:'name', order:'asc'}});
+      if (error) throw error; const L = data || [];
+      for (const it of L) { const path = (prefix ? prefix + '/' : '') + it.name; if (it.id === null || it.id === undefined && !it.metadata) await listAll(bucket, path, acc); else acc.push({path, size:(it.metadata && it.metadata.size) || 0, type:(it.metadata && it.metadata.mimetype) || ''}); }
+      if (L.length < 1000) break;
+    }
+    return acc;
+  }
+  const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
+  /* ملخص بيانات الأنظمة المدمجة: عدد العناصر في كل قائمة (الطلاب، الأسئلة، الاختبارات، النتائج…) */
+  function appSummary(rows){
+    const out = [];
+    rows.forEach(r => { let v; try { v = JSON.parse(r.value); } catch (e) { return; } if (!v || typeof v !== 'object') return;
+      const counts = {}; const walk = (o, pre, depth) => { Object.entries(o).forEach(([k, x]) => { if (Array.isArray(x)) counts[pre + k] = x.length; else if (x && typeof x === 'object' && depth < 1) { const n = Object.keys(x).length; if (/attendance|agencyResults|results/i.test(k)) counts[pre + k] = n; walk(x, pre + k + '.', depth + 1); } }); };
+      walk(v, '', 0); const keys = Object.keys(counts).filter(k => counts[k] > 0);
+      if (keys.length) out.push({app:r.app_key, scope:r.scope, key:r.key, counts:Object.fromEntries(keys.slice(0, 40).map(k => [k, counts[k]]))}); });
+    return out;
+  }
+
+  $('bRun').onclick = async () => {
+    const btn = $('bRun'), log = $('log'), L = (t, c) => logTo(log, t, c); btn.disabled = true; log.innerHTML = ''; $('sum').innerHTML = '';
+    const t0 = new Date(), zip = new JSZip(), man = {kind:'dms-complete-backup', tool:TOOL_VERSION, label:'النسخة الأصلية قبل توحيد برنامج الجاهزية', at:t0.toISOString(), project:CFG.supabaseUrl, by:ME && ME.username, tables:{}, storage:{}, apps:[], problems:[]};
+    const compat = {kind:'dms-full-backup', v:1, at:t0.toISOString(), project:CFG.supabaseUrl, tables:{}, storage:{}};
+    try {
+      for (const t of TABLES) {
+        try { const {rows, total} = await fetchTable(t); const js = JSON.stringify(rows); const h = await sha(js);
+          zip.file('tables/' + t + '.json', js); man.tables[t] = {rows:rows.length, expected:total, sha256:h};
+          if (COMPAT.includes(t)) compat.tables[t] = rows;
+          if (rows.length !== total) { man.problems.push('الجدول ' + t + ': نُسخ ' + rows.length + ' من ' + total); L('⚠ ' + t + ': ' + rows.length + '/' + total, 'warn'); } else L('✓ ' + t + ': ' + rows.length);
+          if (t === 'app_storage') man.apps = appSummary(rows);
+        } catch (e) { const m = (e && e.message) || String(e); if (/does not exist|relation|schema cache/i.test(m)) { man.tables[t] = {missing:true}; L('— ' + t + ': غير موجود في هذا المشروع'); } else { man.tables[t] = {error:m}; man.problems.push('الجدول ' + t + ': ' + m); L('✗ ' + t + ': ' + m, 'bad'); } }
+      }
+      for (const b of BUCKETS) {
+        if (b === 'apps' && !$('withApps').checked) { man.storage[b] = {skipped:true}; L('— apps: تُرك بطلبك'); continue; }
+        let list = []; try { list = await listAll(b, ''); } catch (e) { man.storage[b] = {error:e.message || String(e)}; man.problems.push('المساحة ' + b + ': ' + (e.message || e)); L('✗ ' + b + ': ' + (e.message || e), 'bad'); continue; }
+        man.storage[b] = {files:{}}; let n = 0;
+        for (const f of list) {
+          const { data, error } = await sb.storage.from(b).download(f.path);
+          if (error || !data) { man.problems.push(b + '/' + f.path + ': تعذّر التنزيل'); L('✗ ' + b + '/' + f.path, 'bad'); continue; }
+          const buf = await data.arrayBuffer(); zip.file('storage/' + b + '/' + f.path, buf); man.storage[b].files[f.path] = {size:buf.byteLength, sha256:await sha(buf)};
+          if (b === 'files' || b === 'apps') compat.storage[b + '/' + f.path] = await blobToDataUrl(new Blob([buf], {type:f.type || data.type || 'application/octet-stream'}));
+          if (++n % 10 === 0) L('… ' + b + ': ' + n + ' من ' + list.length);
+        }
+        L('✓ ' + b + ': ' + n + ' ملف');
+      }
+      const cjs = JSON.stringify(compat); zip.file('dms-full-backup.json', cjs); man.compat = {file:'dms-full-backup.json', sha256:await sha(cjs), tables:Object.fromEntries(Object.entries(compat.tables).map(([k, v]) => [k, v.length]))};
+      zip.file('manifest.json', JSON.stringify(man, null, 1));
+      zip.file('README-restore.txt', README(man));
+      L('… ضغط الملف');
+      const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
+      const name = 'backup-ORIGINAL-before-readiness-unification-' + today() + '.zip';
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+      L('✓ نُزّل الملف: ' + name + ' (' + Math.round(blob.size / 1024) + ' ك.ب)', 'ok');
+      $('sum').innerHTML = summaryHtml(man) + (man.problems.length ? '<p class="bad">انتبه: ' + man.problems.length + ' مشكلة أثناء النسخ (مذكورة في السجل). لا تعتمد هذه النسخة قبل معالجتها.</p>' : '<p class="ok">✓ اكتمل النسخ دون أخطاء. الخطوة التالية: افحص الملف من القسم 3، ثم احفظه في مكانين خارج جهازك.</p>');
+    } catch (e) { L('✗ توقف النسخ: ' + (e.message || e), 'bad'); }
+    btn.disabled = false;
+  };
+  function summaryHtml(man){
+    const rows = Object.entries(man.tables).map(([t, v]) => '<tr><td>' + esc(t) + '</td><td>' + (v.missing ? '—' : v.error ? '<span class="bad">خطأ</span>' : v.rows + (v.expected !== v.rows ? ' <span class="warn">(المتوقع ' + v.expected + ')</span>' : '')) + '</td></tr>').join('');
+    const st = Object.entries(man.storage).map(([b, v]) => '<tr><td>ملفات: ' + esc(b) + '</td><td>' + (v.skipped ? 'لم تُضمَّن' : v.error ? '<span class="bad">خطأ</span>' : Object.keys(v.files || {}).length) + '</td></tr>').join('');
+    const apps = (man.apps || []).map(a => '<tr><td>' + esc(a.app + ' · ' + a.scope + ' · ' + a.key) + '</td><td style="font-size:12.5px">' + Object.entries(a.counts).map(([k, n]) => esc(k) + ': <b>' + n + '</b>').join('، ') + '</td></tr>').join('');
+    return '<h3>محتوى النسخة</h3><table><tr><th>الجزء</th><th>العدد</th></tr>' + rows + st + '</table>' + (apps ? '<h3>بيانات الأنظمة المدمجة (لكل قسم)</h3><table><tr><th>النظام · القسم · المفتاح</th><th>ما بداخله</th></tr>' + apps + '</table>' : '');
+  }
+  function README(man){
+    return ['النسخة الأصلية قبل توحيد برنامج الجاهزية', 'تاريخ النسخ: ' + man.at, 'المشروع: ' + man.project, 'أداة النسخ: ' + man.tool + ' — بواسطة: ' + (man.by || ''), '',
+      'محتوى الملف:', '- manifest.json: عدد سجلات كل جدول وبصمة SHA-256 لكل جزء (للتحقق).', '- tables/: كل جدول في ملف JSON مستقل.', '- storage/: الملفات المخزنة (المرفقات files، وإصدارات الأنظمة apps، وصور الأسئلة rd-img).',
+      '- dms-full-backup.json: ملف الاستعادة المتوافق مع الموقع.', '',
+      'الاستعادة:', '1) افحص الملف أولًا من صفحة backup.html (القسم 3).', '2) الموقع: الإعدادات العامة ← النسخ الاحتياطي ← الاستعادة من نسخة شاملة ← اختر dms-full-backup.json من داخل هذا الملف.',
+      '   - «إضافة المفقود فقط» لاسترجاع ما حُذف، و«الاستبدال» لإرجاع السجلات إلى حالتها في هذه النسخة.', '3) صور الأسئلة: صفحة backup.html (القسم 4) باختيار هذا الملف.',
+      '4) كلمات المرور لا تُنسخ (محفوظة مشفرة في خدمة الدخول): عند الاستعادة إلى مشروع جديد تُنشأ كلمات مرور مؤقتة لكل مستخدم.', '',
+      'مهم: لا تحذف هذا الملف ولا تستبدله بنسخة أحدث. احفظه في مكانين خارج جهازك (مثل Google Drive وبريدك).'].join('\r\n');
+  }
+
+  /* ---------- التحقق ---------- */
+  $('bChk').onclick = async () => {
+    const f = $('fChk').files[0], out = $('chk'); if (!f) { out.innerHTML = '<p class="bad">اختر ملف النسخة أولًا.</p>'; return; }
+    out.innerHTML = '<p>جارٍ الفحص…</p>';
+    try {
+      const zip = await JSZip.loadAsync(f); const mf = zip.file('manifest.json'); if (!mf) throw new Error('الملف لا يحتوي manifest.json — ليس نسخة من هذه الأداة.');
+      const man = JSON.parse(await mf.async('string')); let ok = 0, bad = [], n = 0;
+      for (const [t, v] of Object.entries(man.tables)) { if (v.missing || v.error) continue; n++; const z = zip.file('tables/' + t + '.json'); if (!z) { bad.push('مفقود: tables/' + t); continue; }
+        const s = await z.async('string'); const h = await sha(s); let rows = -1; try { rows = JSON.parse(s).length; } catch (e) {}
+        if (h === v.sha256 && rows === v.rows) ok++; else bad.push('لا يطابق: ' + t); }
+      for (const [b, v] of Object.entries(man.storage)) for (const [p, x] of Object.entries((v && v.files) || {})) { n++; const z = zip.file('storage/' + b + '/' + p); if (!z) { bad.push('مفقود: ' + b + '/' + p); continue; }
+        const buf = await z.async('arraybuffer'); if (await sha(buf) === x.sha256) ok++; else bad.push('لا يطابق: ' + b + '/' + p); }
+      let compatOk = false; const cz = zip.file('dms-full-backup.json');
+      if (cz) { const s = await cz.async('string'); compatOk = (await sha(s)) === man.compat.sha256; try { const c = JSON.parse(s); compatOk = compatOk && c.kind === 'dms-full-backup' && Object.entries(man.compat.tables).every(([k, len]) => Array.isArray(c.tables[k]) && c.tables[k].length === len); } catch (e) { compatOk = false; } }
+      n++; if (compatOk) ok++; else bad.push('ملف الاستعادة dms-full-backup.json غير سليم');
+      const good = !bad.length && !(man.problems || []).length;
+      out.innerHTML = '<p class="' + (good ? 'ok' : 'bad') + ' big">' + (good ? '✓ النسخة سليمة: ' + ok + ' من ' + n + ' جزءًا تطابق بصماتها، وملف الاستعادة صالح.' : '✗ توجد مشكلات: ' + bad.length + (man.problems && man.problems.length ? ' + ' + man.problems.length + ' أثناء النسخ' : '')) + '</p>'
+        + '<p>«' + esc(man.label || '') + '» · ' + esc(new Date(man.at).toLocaleString('ar-SA')) + ' · ' + esc(man.project || '') + '</p>'
+        + (bad.length ? '<div class="note">' + bad.slice(0, 30).map(esc).join('<br>') + '</div>' : '') + summaryHtml(man);
+    } catch (e) { out.innerHTML = '<p class="bad">' + esc(e.message || e) + '</p>'; }
+  };
+
+  /* ---------- استعادة صور الأسئلة المفقودة ---------- */
+  $('bImg').onclick = async () => {
+    const f = $('fImg').files[0], log = $('logImg'), L = (t, c) => logTo(log, t, c); log.innerHTML = ''; if (!f) { L('اختر الملف أولًا', 'bad'); return; }
+    if (!confirm('ستُرفع صور الأسئلة غير الموجودة حاليًا فقط، دون استبدال أي صورة موجودة. متابعة؟')) return;
+    try { const zip = await JSZip.loadAsync(f); const man = JSON.parse(await zip.file('manifest.json').async('string'));
+      const files = Object.entries(((man.storage || {})['rd-img'] || {}).files || {}); let up = 0, skip = 0, fail = 0;
+      for (const [p] of files) { const z = zip.file('storage/rd-img/' + p); if (!z) { fail++; continue; } const buf = await z.async('arraybuffer');
+        const type = /\.webp$/i.test(p) ? 'image/webp' : /\.png$/i.test(p) ? 'image/png' : /\.gif$/i.test(p) ? 'image/gif' : 'image/jpeg';
+        const { error } = await sb.storage.from('rd-img').upload(p, new Blob([buf], {type}), {upsert:false, contentType:type});
+        if (!error) up++; else if (/exist|duplicate|409/i.test(error.message || '')) skip++; else { fail++; L('✗ ' + p + ': ' + error.message, 'bad'); } }
+      L('✓ رُفع ' + up + '، موجود مسبقًا ' + skip + (fail ? '، تعذّر ' + fail : ''), fail ? 'bad' : 'ok');
+    } catch (e) { L('✗ ' + (e.message || e), 'bad'); }
+  };
+})();
+</script>
+</body>
+</html>
