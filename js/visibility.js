@@ -27,7 +27,7 @@
   /* نسخة الحالة في المسميات العامة (تُقرأ قبل الدخول) — تُحدَّث تلقائيًا مع كل حفظ يقوم به المالك */
   function syncMirror() {
     if (!owner() || !DB || !DB.settings) return;
-    const S = DB.settings; const v = JSON.stringify(Object.assign({ h: S.sysHidden || {}, m: S.maint || { mode: 'off' } }, Array.isArray(S.repeatTypes) ? { r: S.repeatTypes } : {}));
+    const S = DB.settings; const v = JSON.stringify(Object.assign({ h: S.sysHidden || {}, m: S.maint || { mode: 'off' } }, Array.isArray(S.repeatTypes) ? { r: S.repeatTypes } : {}, S.supportWa ? { w: String(S.supportWa) } : {}));
     S.labels = S.labels || {}; if (S.labels[MIRROR] !== v) S.labels[MIRROR] = v;
   }
   { const _sv = save; save = function () { try { syncMirror(); } catch (e) {} return _sv.apply(this, arguments); }; }
@@ -186,6 +186,7 @@
       return r; }; }
   { const _go = go; go = function () { const r = _go.apply(this, arguments); try { gate(); } catch (e) {} return r; }; }
   /* صفحة الدخول: اللجان المشتركة تظهر في «وحدات الكلية المشتركة»، وتحت كل قسم ما يتكرر له فقط (الجاهزية) */
+  window.dmsRepTypes = () => repTypes(); window.dmsMirror = () => mirror();
   function repTypes() { const S = (DB && DB.settings) || {}; if (Array.isArray(S.repeatTypes)) return S.repeatTypes; const r = mirror().r; return Array.isArray(r) ? r : null; }
   if (typeof renderLanding === 'function') { const _rl = renderLanding; renderLanding = function () {
       const rep = repTypes(), tmp = [];
@@ -215,4 +216,6 @@
   #vzOverlay .vz-ic{font-size:52px}#vzOverlay h2{margin:8px 0;color:#3D1F63}#vzOverlay p{line-height:1.9;color:#333}#vzOverlay .vz-until{font-weight:700;color:#6B3FA0}`;
   document.head.appendChild(st);
   try { gate(); } catch (e) {}
+  /* واجهة الدخول 3.4 (المقترح ج) وزر واتساب الدعم — ملف مستقل */
+  try { if (!document.querySelector('script[src^="js/landing3.js"]')) { const sc = document.createElement('script'); sc.src = 'js/landing3.js?v=34'; document.body.appendChild(sc); } } catch (e) {}
 })();
