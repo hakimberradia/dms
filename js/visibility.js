@@ -20,14 +20,14 @@
   function hiddenMap() { const S = (DB && DB.settings) || {}; return S.sysHidden || mirror().h || {}; }
   function maint() { const S = (DB && DB.settings) || {}; const m = S.maint || mirror().m || {}; return { mode: MODES[m.mode] ? m.mode : 'off', msg: m.msg || '', until: m.until || '', by: m.by || '', at: m.at || '' }; }
   const hid = (k) => (hiddenMap()[k] || []);
-  const scopeOfComm = (cid) => { const c = ((DB && DB.committees) || []).find((x) => x.id === cid); return !c ? '' : c.level === 'college' ? 'college' : (c.dept || ''); };
+  const scopeOfComm = (cid) => { const c = ((DB && DB.committees) || []).find((x) => x.id === cid); return !c ? '' : (c.level === 'college' && !c._sharedTmp) ? 'college' : (c.dept || ''); };
   const scopeName = (sc) => sc === 'college' ? 'مستوى الكلية' : (typeof deptName === 'function' ? deptName(sc) : sc);
   window.dmsSysHiddenIn = (k, sc) => hid(k).includes(sc);
 
   /* نسخة الحالة في المسميات العامة (تُقرأ قبل الدخول) — تُحدَّث تلقائيًا مع كل حفظ يقوم به المالك */
   function syncMirror() {
     if (!owner() || !DB || !DB.settings) return;
-    const S = DB.settings; const v = JSON.stringify({ h: S.sysHidden || {}, m: S.maint || { mode: 'off' } });
+    const S = DB.settings; const v = JSON.stringify(Object.assign({ h: S.sysHidden || {}, m: S.maint || { mode: 'off' } }, Array.isArray(S.repeatTypes) ? { r: S.repeatTypes } : {}));
     S.labels = S.labels || {}; if (S.labels[MIRROR] !== v) S.labels[MIRROR] = v;
   }
   { const _sv = save; save = function () { try { syncMirror(); } catch (e) {} return _sv.apply(this, arguments); }; }
@@ -125,7 +125,10 @@
   const usedComm = (D, id) => ['tasks', 'kpis', 'files', 'clo', 'visits'].some((k) => (D[k] || []).some((x) => x && x.committee === id))
     || (D.users || []).some((u) => u && u.memberships && u.memberships[id]);
   function pruneRepeats(D) {
-    const rep = D && D.settings && D.settings.repeatTypes; if (!Array.isArray(rep) || !Array.isArray(D.committees)) return;
+    let rep = D && D.settings && D.settings.repeatTypes;
+    /* قبل الدخول: الإعداد يصل من النسخة العامة في المسميات */
+    if (!Array.isArray(rep)) { try { const L = (D && D.settings && D.settings.labels) || {}; rep = L[MIRROR] ? JSON.parse(L[MIRROR]).r : null; } catch (e) { rep = null; } }
+    if (!Array.isArray(rep) || !Array.isArray(D.committees)) return;
     const pid = pidOf(D), gone = new Set();
     D.committees = D.committees.filter((c) => {
       if (c.level === 'college' || !c.dept || c.dept === pid || c.type === c.id || rep.includes(c.type)) return true;
@@ -182,7 +185,13 @@
       try { const m = maint(), n = document.getElementById('lgPNote'); if (m.mode === 'on' && n && s !== 'owner') n.innerHTML = '<b style="color:#B3261E">الموقع تحت الصيانة الآن؛ الدخول متاح للمالك فقط.</b>'; } catch (e) {}
       return r; }; }
   { const _go = go; go = function () { const r = _go.apply(this, arguments); try { gate(); } catch (e) {} return r; }; }
-  if (typeof renderLanding === 'function') { const _rl = renderLanding; renderLanding = function () { const r = _rl.apply(this, arguments); try { gate(); } catch (e) {} return r; }; }
+  /* صفحة الدخول: اللجان المشتركة تظهر في «وحدات الكلية المشتركة»، وتحت كل قسم ما يتكرر له فقط (الجاهزية) */
+  function repTypes() { const S = (DB && DB.settings) || {}; if (Array.isArray(S.repeatTypes)) return S.repeatTypes; const r = mirror().r; return Array.isArray(r) ? r : null; }
+  if (typeof renderLanding === 'function') { const _rl = renderLanding; renderLanding = function () {
+      const rep = repTypes(), tmp = [];
+      if (rep && (DB.departments || []).length > 1) (DB.committees || []).forEach((c) => { if (c.level !== 'college' && c.type === c.id && !rep.includes(c.type)) { tmp.push([c, c.level, c.dept]); c._sharedTmp = true; c.level = 'college'; } });
+      let r; try { r = _rl.apply(this, arguments); } finally { tmp.forEach(([c, l, d]) => { c.level = l; c.dept = d; delete c._sharedTmp; }); }
+      try { gate(); } catch (e) {} return r; }; }
   if (typeof enter === 'function') { const _en = enter; enter = function () { const r = _en.apply(this, arguments); try { gate(); } catch (e) {} return r; }; }
   setInterval(() => { try { gate(); } catch (e) {} }, 20000);
 
