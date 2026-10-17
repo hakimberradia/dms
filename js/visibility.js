@@ -118,7 +118,44 @@
     try { audit('وضع الصيانة', MODES[mode], DB.settings.maint.msg); } catch (e) {}
     save(); refresh(); gate(); toast('تم الحفظ: ' + MODES[mode]);
   };
-  if (typeof setSystems === 'function') { const _ss = setSystems; setSystems = function () { const h = _ss.apply(this, arguments); return owner() ? maintPanel() + visPanel() + h : h; }; }
+  /* ---------- ما يتكرر لكل قسم: لجنة الجاهزية فقط، والباقي مشترك ---------- */
+  /* الإعداد repeatTypes: أنواع لجان القسم التي تُنشأ لكل قسم جديد. غير محدد = السلوك القديم (كلها تتكرر).
+     النسخ الزائدة في الأقسام الأخرى تُزال إن كانت فارغة (بلا مهام ولا مؤشرات ولا ملفات ولا قياسات ولا أعضاء)، ولا تُمس لجان القسم الأساسي وبياناتها. */
+  const pidOf = (D) => (D.settings && D.settings.primaryDept) || ((D.departments || [])[0] || {}).id || '';
+  const usedComm = (D, id) => ['tasks', 'kpis', 'files', 'clo', 'visits'].some((k) => (D[k] || []).some((x) => x && x.committee === id))
+    || (D.users || []).some((u) => u && u.memberships && u.memberships[id]);
+  function pruneRepeats(D) {
+    const rep = D && D.settings && D.settings.repeatTypes; if (!Array.isArray(rep) || !Array.isArray(D.committees)) return;
+    const pid = pidOf(D), gone = new Set();
+    D.committees = D.committees.filter((c) => {
+      if (c.level === 'college' || !c.dept || c.dept === pid || c.type === c.id || rep.includes(c.type)) return true;
+      if (usedComm(D, c.id)) return true; gone.add(c.id); return false; });
+    if (gone.size) D.templates = (D.templates || []).filter((t) => !gone.has(t.committee));
+    /* اللجنة المشتركة تحمل اسمها دون اسم القسم */
+    D.committees.forEach((c) => { if (c.type === c.id && c.level !== 'college' && c.baseName && !rep.includes(c.type) && c.name !== c.baseName) c.name = c.baseName; });
+  }
+  if (typeof ensureDepts === 'function') { const _ed = ensureDepts; ensureDepts = function (D) { const r = _ed.apply(this, arguments); try { pruneRepeats(D); } catch (e) {} return r; }; }
+  function repeatPanel() {
+    const S = DB.settings, rep = S.repeatTypes, origs = (DB.committees || []).filter((c) => c.level !== 'college' && c.type === c.id);
+    const on = (t) => !Array.isArray(rep) || rep.includes(t);
+    return `<div class="panel vz-panel" id="vzRep"><h3>🏛 ما يتكرر لكل قسم</h3><div class="body">
+      <p class="small" style="margin-top:0">اللجان المؤشَّرة <b>تُنشأ لكل قسم</b> ببيانات مستقلة. غير المؤشَّرة <b>مشتركة للكلية</b>: لجنة واحدة يُضاف إليها أعضاء من كل الأقسام، وتُحذف نسخها الفارغة من الأقسام الأخرى (لا تُحذف أي لجنة فيها مهام أو أعضاء أو بيانات).</p>
+      <div class="vz-modes">${origs.map((c) => `<label class="vz-mode"><span><input type="checkbox" data-rep="${E(c.id)}" ${on(c.id) ? 'checked' : ''}> <b>${E(c.baseName || c.name)}</b></span><small>${on(c.id) ? 'تتكرر لكل قسم' : 'مشتركة للكلية'}</small></label>`).join('')}</div>
+      <div style="margin-top:10px"><button class="btn primary" onclick="dmsRepeatSave()">حفظ</button></div></div></div>`;
+  }
+  window.dmsRepeatSave = function () {
+    if (!owner()) return;
+    const rep = [...document.querySelectorAll('#vzRep input[data-rep]')].filter((x) => x.checked).map((x) => x.getAttribute('data-rep'));
+    const before = (DB.committees || []).length;
+    DB.settings.repeatTypes = rep; pruneRepeats(DB);
+    const kept = (DB.committees || []).filter((c) => c.dept && c.dept !== pidOf(DB) && c.type !== c.id && !rep.includes(c.type));
+    try { audit('ما يتكرر لكل قسم', rep.map((t) => (comm(t) || {}).name || t).join('، ') || 'لا شيء', ''); } catch (e) {}
+    save(); refresh();
+    toast('تم الحفظ' + (before - DB.committees.length ? ' — أُزيلت ' + (before - DB.committees.length) + ' لجنة فارغة مكررة' : ''));
+    if (kept.length) alert('بقيت هذه اللجان لأن فيها مهام أو أعضاء أو بيانات:\n' + kept.map((c) => '• ' + c.name).join('\n'));
+  };
+  if (typeof window.pgDepts === 'function') { const _pd = window.pgDepts; window.pgDepts = function () { const h = _pd.apply(this, arguments); return owner() ? repeatPanel() + h : h; }; }
+  if (typeof setSystems === 'function') { const _ss = setSystems; setSystems = function () { const h = _ss.apply(this, arguments); return owner() ? maintPanel() + repeatPanel() + visPanel() + h : h; }; }
 
   /* ---------- البوابة: شاشة الصيانة لغير المالك، وشريط التنبيه ---------- */
   const defMsg = 'نعمل على تحديث الموقع لتحسين خدماتكم، ونعود قريبًا بإذن الله.';
