@@ -274,6 +274,14 @@ function rdSumHTML(s, opt) {
   var S = { code: (params.get('c') || '').toUpperCase(), uid: '', name: '', exam: null, order: [], optOrder: {}, answers: {}, cur: 0,
             startedAt: null, endsAt: null, timer: null, result: null, submitting: false, qEnd: null, blur: 0, timedOut: 0, reason: '', warned: false };
   var LET = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
+  /* 3.4: اسم القسم أعلى الصفحة (من رابط الاختبار ثم من بيانات الاختبار) — كل قسم له اختباره المستقل */
+  var DEPT = String(params.get('d') || '').replace(/[<>]/g, '').trim().slice(0, 60);
+  function showDept() {
+    if (!DEPT) return; var b = document.getElementById('deptBar');
+    if (!b) { b = document.createElement('div'); b.id = 'deptBar'; var t = document.querySelector('.top'); if (t) t.insertAdjacentElement('afterend', b); else document.body.insertBefore(b, document.body.firstChild); }
+    b.textContent = '🎓 اختبار الجاهزية — ' + DEPT;
+  }
+  (function () { var st = document.createElement('style'); st.textContent = '#deptBar{max-width:800px;margin:10px auto 0;padding:9px 14px;border-radius:12px;background:linear-gradient(90deg,#4A2A8C,#6A3FB5);color:#fff;font-weight:800;font-size:15px;text-align:center;box-shadow:0 4px 14px rgba(74,42,140,.18)}@media(max-width:820px){#deptBar{margin:10px 12px 0}}'; document.head.appendChild(st); showDept(); })();
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function digits(s) { return String(s || '').replace(/[٠-٩]/g, function (d) { return d.charCodeAt(0) - 1632; }).replace(/[۰-۹]/g, function (d) { return d.charCodeAt(0) - 1776; }); }
@@ -302,7 +310,7 @@ function rdSumHTML(s, opt) {
     try { localStorage.setItem(key(), JSON.stringify({ answers: S.answers, startedAt: S.startedAt, endsAt: S.endsAt, name: S.name, cur: S.cur, qEnd: S.qEnd, blur: S.blur, timedOut: S.timedOut })); } catch (e) {} }
   function locked() { return !!(S.exam && (S.exam.forwardOnly || S.exam.perQuestionSec > 0)); }
   function active() { return !!(S.exam && S.startedAt && !S.result && !S.submitting && document.getElementById('qcard')); }
-  function setOrg(o) { if (o && o.systemName) document.getElementById('orgName').textContent = o.systemName; if (o && o.university) document.getElementById('orgSub').textContent = o.university; }
+  function setOrg(o) { if (o && o.dept) { DEPT = String(o.dept); showDept(); } if (o && o.systemName) document.getElementById('orgName').textContent = o.systemName; if (o && o.university) document.getElementById('orgSub').textContent = o.university; }
 
   function splitMark(s, m) { s = String(s == null ? '' : s); var i = s.indexOf(m); if (i < 0) return [s, null]; var j = null; try { j = JSON.parse(s.slice(i + m.length)); } catch (e) {} return [s.slice(0, i), j]; }
   var MOTIV = [
@@ -319,6 +327,7 @@ function rdSumHTML(s, opt) {
 
   /* ---------------- الدخول ---------------- */
   function screenLogin(msg) {
+    if (msg && DEPT && /غير مسج/.test(msg)) msg = 'هذا الاختبار خاص بطلاب «' + DEPT + '» المسجلين فيه، ورقمك الجامعي غير موجود في قائمتهم. إن كنت من قسم آخر فاطلب رابط اختبار قسمك من لجنة الجاهزية في قسمك، وإن كنت من هذا القسم فراجع الدكتور لإضافتك.';
     app.innerHTML = '<div class="wrap login"><div class="brand"><h2>' + esc(document.getElementById('orgName').textContent || 'اختبار الجاهزية') + '</h2><p>' + esc(document.getElementById('orgSub').textContent || '') + '</p>' +
       '<ul><li><span>' + ic('clock') + '</span>اختبار محدد الوقت تُحفظ إجاباتك فيه أولًا بأول</li><li><span>' + ic('check') + '</span>نتيجتك تظهر فور التسليم مع شرح كل سؤال</li><li><span>' + ic('bulb') + '</span>خطة مذاكرة وملخصات للمحاور التي تحتاج تقويتها</li></ul></div>' +
       '<div class="card"><h1>الدخول إلى الاختبار</h1>' +
