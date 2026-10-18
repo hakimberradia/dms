@@ -340,4 +340,146 @@
   function banner() { return `<div style="position:relative;overflow:hidden;border-radius:16px;padding:16px 18px;margin-bottom:18px;color:#fff;background:linear-gradient(120deg,#3B2272,#5B34A6 55%,#7C55D0);box-shadow:0 12px 28px rgba(59,34,114,.25);display:flex;gap:14px;align-items:center;flex-wrap:wrap"><span style="width:50px;height:50px;border-radius:14px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:26px">📊</span><div style="flex:1;min-width:200px"><b style="font-size:17px">لوحة القيادة: التقارير والمتابعة حسب اللجنة</b><div style="font-size:13px;opacity:.9">الإنجاز والمؤشرات ونتائج الأنظمة (الجاهزية والتدريب ومخرجات التعلم) والمقارنات، في صفحة واحدة</div></div><button onclick="go('lead')" style="all:unset;cursor:pointer;background:#fff;color:#5B34A6;font-weight:800;border-radius:10px;padding:9px 18px">فتح لوحة القيادة ←</button></div>`; }
   if (typeof pgHead === 'function') { const _ph = pgHead; pgHead = function () { const h = _ph.apply(this, arguments); return allowed() ? banner() + h : h; }; window.pgHead = pgHead; }
   if (typeof window.pgCollege === 'function') { const _pc = window.pgCollege; window.pgCollege = function () { const h = _pc.apply(this, arguments); return allowed() ? banner() + h : h; }; try { pgCollege = window.pgCollege; } catch (e) {} }
+
+  /* =====================================================================
+     v3.5 — مقارنة الأقسام والتحليلات (رسوم وجداول وتقارير قابلة للطباعة والتصدير)
+     ===================================================================== */
+  const PAL = ['#5B34A6', '#2F6F9F', '#C27C3A', '#1E6B52', '#8C2A4A', '#6B7A8F'];
+  const CONC = [['أساسيات الاقتصاد', /اقتصاد/], ['أساسيات المحاسبة', /(أساسيات|مبادئ) المحاسبة/], ['أساسيات المالية', /أساسيات المالية|المالية في الأعمال|مبادئ المالية/],
+    ['القانون والأخلاقيات', /قانون/], ['الإدارة والمنظمات', /الإدارة والمنظمات|(أساسيات|مبادئ) الإدارة$|إدارة المنظمات/], ['إدارة العمليات', /إدارة العمليات/],
+    ['الإدارة الاستراتيجية', /استراتيج/], ['نظم المعلومات الإدارية', /نظم المعلومات الإدارية/], ['مبادئ التسويق', /(أساسيات|مبادئ) التسويق/]];
+  const concept = (n) => { const c = CONC.find(([, re]) => re.test(String(n || ''))); return c ? c[0] : null; };
+  const avgOf = (L) => L.length ? L.reduce((a, b) => a + b, 0) / L.length : null;
+  /* نتائج الاختبارات الإلكترونية (جدول مستقل) تُضاف إلى نتائج النظام */
+  const ONL = new Map();
+  function onlineOf(dept) {
+    if (ONL.has(dept)) return ONL.get(dept);
+    const p = (async () => { if (!window.SB) return []; let all = [];
+      for (let from = 0; ; from += 1000) { const { data, error } = await SB.from('online_submissions').select('exam_id,student_uid,student_name,score,element_scores,submitted_at').eq('scope', dept).range(from, from + 999);
+        if (error) return all; all = all.concat(data || []); if (!data || data.length < 1000) break; }
+      return all; })();
+    ONL.set(dept, p); p.catch(() => ONL.delete(dept)); return p;
+  }
+  /* بيانات تحليلية كاملة لقسم: نتائج النظام + الإلكترونية، شهرية، حسب المفهوم المشترك */
+  async function deptAnalytics(dept) {
+    const r = await readApp('readiness', dept, 'academia:data'); const db = r && r.v; if (!db) return null;
+    const th = (db.settings && db.settings.thresholds) || {}, ready = +(th.ready != null ? th.ready : 80), partial = +(th.partial != null ? th.partial : 60);
+    const st = (db.students || []), byUid = new Map(st.map((s) => [String(s.uid), s])), byId = new Map(st.map((s) => [s.id, s]));
+    const R = (db.results || []).filter((x) => x && x.score != null && !isNaN(+x.score) && x.source !== 'online').map((x) => ({ exam: x.examId, s: byId.get(x.studentId), score: +x.score, es: x.elementScores || {}, at: x.submittedAt || x.date || '' }));
+    let onl = []; try { onl = await onlineOf(dept); } catch (e) {}
+    onl.forEach((x) => { if (x.score == null) return; R.push({ exam: x.exam_id, s: byUid.get(String(x.student_uid)), score: +x.score, es: x.element_scores || {}, at: x.submitted_at || '', online: true }); });
+    const el = new Map((db.elements || []).map((e) => [e.id, e])), tp = new Map((db.topics || []).map((t) => [t.id, t])), un = new Map((db.units || []).map((u) => [u.id, u]));
+    const unitAgg = {}, concAgg = {};
+    R.forEach((x) => Object.entries(x.es).forEach(([eid, v]) => { const e = el.get(eid), t = e && tp.get(e.topicId), u = t && un.get(t.unitId); if (!u || v == null || isNaN(+v)) return;
+      const k = (u.code ? u.code + ' — ' : '') + u.name; (unitAgg[k] = unitAgg[k] || []).push(+v); const c = concept(u.name); if (c) (concAgg[c] = concAgg[c] || []).push(+v); }));
+    const months = {}; R.forEach((x) => { const m = String(x.at).slice(0, 7); if (/^\d{4}-\d{2}$/.test(m)) (months[m] = months[m] || []).push(x.score); });
+    const sc = R.map((x) => x.score), takers = new Set(R.map((x) => x.s ? x.s.id : 'u' + Math.random())).size;
+    const g = { m: R.filter((x) => x.s && x.s.gender !== 'طالبة').map((x) => x.score), f: R.filter((x) => x.s && x.s.gender === 'طالبة').map((x) => x.score) };
+    const bins = [0, 0, 0, 0, 0]; sc.forEach((v) => { bins[Math.min(4, Math.floor(v / 20))]++; });
+    const exams = (db.exams || []).map((e) => { const L = R.filter((x) => x.exam === e.id).map((x) => x.score); return { name: e.name, date: e.date || (e.createdAt || '').slice(0, 10), n: L.length, avg: avgOf(L), ready: L.filter((v) => v >= ready).length }; }).filter((x) => x.n);
+    /* الطلاب الأضعف (آخر نتيجة لكل طالب) */
+    const last = new Map(); R.slice().sort((a, b) => String(a.at).localeCompare(String(b.at))).forEach((x) => { if (x.s) last.set(x.s.id, x); });
+    const atRisk = [...last.values()].filter((x) => x.score < partial).sort((a, b) => a.score - b.score).slice(0, 15).map((x) => ({ name: x.s.name, uid: x.s.uid, score: x.score }));
+    let pr = 0, ab = 0; Object.values(db.attendance || {}).forEach((A) => Object.values(A || {}).forEach((x) => { const s = x && x.st; if (s === 'حاضر' || s === 'حاضرة' || s === 'متأخر' || s === 'متأخرة') pr++; else if (s === 'غائب' || s === 'غائبة') ab++; }));
+    return { dept, at: r.at, ready, partial, students: st.filter((s) => s.active !== false).length, questions: (db.questions || []).length, examsN: (db.exams || []).length, results: R.length, online: onl.length, takers,
+      avg: avgOf(sc), cat: { ready: sc.filter((v) => v >= ready).length, partial: sc.filter((v) => v >= partial && v < ready).length, not: sc.filter((v) => v < partial).length },
+      mAvg: avgOf(g.m), fAvg: avgOf(g.f), bins, exams, atRisk, attRate: pr + ab ? pr / (pr + ab) * 100 : null, courses: (db.courses || []).length,
+      units: Object.entries(unitAgg).map(([k, L]) => ({ label: k, value: avgOf(L), n: L.length })).sort((a, b) => a.value - b.value),
+      conc: Object.fromEntries(Object.entries(concAgg).map(([k, L]) => [k, avgOf(L)])), months: Object.fromEntries(Object.entries(months).map(([k, L]) => [k, avgOf(L)])) };
+  }
+  /* رسم خطي بسيط (تطور شهري لعدة أقسام) */
+  function lineChart(labels, series, o) { o = o || {}; const W = 560, H = 220, pl = 46, pr = 50, pt = 18, pb = 34, max = o.max || 100, n = labels.length;
+    if (!n) return '<div class="small muted">لا توجد بيانات كافية.</div>';
+    const x = (i) => W - pr - (n === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1)), y = (v) => pt + (H - pt - pb) * (1 - v / max); let g = '';
+    [0, .25, .5, .75, 1].forEach((f) => { const yy = y(max * f); g += `<line x1="${pl}" x2="${W - pr}" y1="${yy}" y2="${yy}" stroke="#E4E9E6"/><text x="${W - pr + 4}" y="${yy + 4}" font-size="10" fill="#6B6584">${Math.round(max * f)}</text>`; });
+    if (o.target != null) g += `<line x1="${pl}" x2="${W - pr}" y1="${y(o.target)}" y2="${y(o.target)}" stroke="#1B5E20" stroke-dasharray="5 4"/><text x="${(W - pr + pl) / 2}" y="${y(o.target) - 5}" font-size="10" text-anchor="middle" fill="#1B5E20">حد الجاهزية ${o.target}%</text>`;
+    labels.forEach((lb, i) => { g += `<text x="${x(i)}" y="${H - pb + 16}" font-size="11" text-anchor="middle" fill="#6B6584">${E(lb)}</text>`; });
+    series.forEach((s) => { const pts = s.values.map((v, i) => v == null ? null : [x(i), y(v), v]).filter(Boolean);
+      if (pts.length > 1) g += `<polyline fill="none" stroke="${s.color}" stroke-width="2.5" points="${pts.map((p) => p[0] + ',' + p[1]).join(' ')}"/>`;
+      pts.forEach((p) => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${s.color}"><title>${E(s.name)}: ${R1(p[2])}%</title></circle>`; }); });
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img">${g}</svg>${legend(series.map((s) => ({ label: s.name, color: s.color })))}`; }
+  /* خريطة حرارية: صفوف × أعمدة بقيم نسبية */
+  function heat(rows, cols, get, o) { o = o || {}; const col = (v) => v == null ? '#F3F1F8' : v >= (o.ok || 80) ? '#CDEBD3' : v >= (o.mid || 60) ? '#FFE9B8' : '#F8CFCB';
+    return `<div class="tbl-wrap"><table class="t ld-heat"><tr><th></th>${cols.map((c) => `<th>${E(c.label)}</th>`).join('')}</tr>${rows.map((r) => `<tr><td><b>${E(r.label)}</b></td>${cols.map((c) => { const v = get(r, c); return `<td style="background:${col(v)};text-align:center;font-weight:700">${v == null ? '—' : '<bdi>' + R1(v) + '%</bdi>'}</td>`; }).join('')}</tr>`).join('')}</table></div>
+      <div class="lgd"><span><i style="background:#CDEBD3"></i>≥ ${o.ok || 80}%</span><span><i style="background:#FFE9B8"></i>${o.mid || 60}–${(o.ok || 80) - 1}%</span><span><i style="background:#F8CFCB"></i>&lt; ${o.mid || 60}%</span><span><i style="background:#F3F1F8"></i>لا توجد بيانات</span></div>`; }
+  /* تصدير الجداول إلى Excel (CSV بترميز يقرؤه Excel) */
+  window.ldExportCsv = function (id, name) { const t = document.getElementById(id); if (!t) return; const rows = [];
+    t.querySelectorAll('table').forEach((tb, k) => { if (k) rows.push([]); const cap = tb.closest('.panel'); if (cap) rows.push([(cap.querySelector('h3') || {}).textContent || '']); tb.querySelectorAll('tr').forEach((tr) => rows.push([...tr.children].map((td) => td.textContent.trim()))); });
+    const csv = '﻿' + rows.map((r) => r.map((x) => '"' + String(x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = (name || 'تقرير') + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 800); };
+  const viewTabs = (cur) => { const L = [['', '🗂️ اللجان']]; if (collegeView() && depts().length > 1) L.push(['cmp', '📈 مقارنة الأقسام']); L.push(['ana', '🎯 تحليل الجاهزية']);
+    return `<div class="ld-tabs">${L.map(([k, l]) => `<a class="${(cur || '') === k ? 'on' : ''}" onclick="go('lead',{dept:'${E(VIEW.dept || '')}'${k ? ",view:'" + k + "'" : ''}})">${l}</a>`).join('')}</div>`; };
+  const heroBtns = (title) => `<button class="ld-hbtn" onclick="printDoc('${E(title)}',document.getElementById('leadBody').innerHTML)">🖨️ طباعة / PDF</button><button class="ld-hbtn" onclick="ldExportCsv('leadBody','${E(title)}')">⬇️ Excel</button>`;
+  const hero = (title, sub, cur) => CSS + `<div class="ld-page"><div class="ld-hero"><div class="ld-hero-top"><span class="ic">📈</span><div style="flex:1;min-width:200px"><h2>${E(title)}</h2><div class="sub">${E(sub)}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${heroBtns(title)}</div></div>${cur === 'ana' ? deptChips(selDept()) : ''}${viewTabs(cur)}</div><div id="leadBody">`;
+
+  /* ---------- صفحة مقارنة الأقسام ---------- */
+  function pgCompare() {
+    const D = depts(); let h = hero('مقارنة الأقسام', 'الإنجاز والمؤشرات ونتائج الأنظمة جنبًا إلى جنب · ' + new Date().toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' }), 'cmp');
+    const W = D.map((d, i) => { const cs = commsOf(d.id), S = cs.map(cStats), sum = (k) => S.reduce((a, s) => a + s[k], 0); return { d, i, cs: cs.length, n: sum('n'), done: sum('done'), late: sum('late'), ko: sum('kpiOk'), k: sum('kpi'), avg: S.length ? Math.round(S.reduce((a, s) => a + s.avg, 0) / S.length) : 0 }; });
+    h += '<div class="ld-sec">أعمال اللجان</div>';
+    h += `<div class="grid2 ld">${panel('متوسط إنجاز لجان كل قسم', hbars(W.map((r) => ({ label: r.d.name, value: r.avg, color: PAL[r.i % PAL.length], sub: r.cs + ' لجنة · ' + r.n + ' مهمة' })), { max: 100 }))}
+      ${panel('المهام حسب الحالة', hstack(W.map((r) => ({ label: r.d.name, done: r.done, open: r.n - r.done - r.late, late: r.late })), [{ k: 'done', l: 'مكتملة', c: 'var(--ok)' }, { k: 'open', l: 'مفتوحة', c: '#9DB9CF' }, { k: 'late', l: 'متأخرة', c: 'var(--late)' }]))}</div>`;
+    h += panel('جدول أعمال اللجان', table(['القسم', 'اللجان', 'المهام', 'المكتمل', 'نسبة الإكمال', 'المتأخر', 'المؤشرات المحققة'], W.map((r) => [E(r.d.name), r.cs, r.n, r.done, bp(r.done, r.n), r.late ? `<b class="bad">${r.late}</b>` : 0, r.ko + '/' + r.k + ' (' + bp(r.ko, r.k) + ')'])));
+    h += '<div class="ld-sec">نتائج الجاهزية</div><div id="ldCmpReady" class="ld-load">جارٍ تحميل نتائج الجاهزية للأقسام (ومعها نتائج الاختبارات الإلكترونية)…</div>';
+    h += '<div class="ld-sec">الأنظمة المشتركة</div><div id="ldCmpShared" class="ld-load">جارٍ تحميل التدريب وقياس مخرجات التعلم…</div>';
+    return h + '</div></div>';
+  }
+  async function fillCompare() {
+    const box = $q('#ldCmpReady'); if (!box) return; const D = depts();
+    const A = await Promise.all(D.map(async (d, i) => { try { return { d, i, m: await deptAnalytics(d.id) }; } catch (e) { return { d, i, m: null, err: e.message || String(e) }; } }));
+    const ok = A.filter((x) => x.m && x.m.results), ready = (A.find((x) => x.m) || { m: { ready: 80, partial: 60 } }).m;
+    let h = table(['القسم', 'الطلاب', 'اختبروا', 'النتائج', 'منها إلكترونية', 'المتوسط', 'جاهز', 'جزئي', 'غير جاهز', 'الحضور', 'الأسئلة في البنك'], A.map((x) => x.m ? [E(x.d.name), x.m.students, x.m.takers, x.m.results, x.m.online, fmtAvg(x.m.avg), bp(x.m.cat.ready, x.m.results), bp(x.m.cat.partial, x.m.results), bp(x.m.cat.not, x.m.results), fmtAvg(x.m.attRate), x.m.questions] : [E(x.d.name), '—', '—', '—', '—', '—', '—', '—', '—', '—', x.err ? '<span class="small bad">تعذّر</span>' : '—']));
+    h = panel('ملخص الجاهزية حسب القسم', h);
+    if (ok.length) {
+      h += `<div class="grid2 ld">${panel('متوسط الدرجات ونسبة الجاهزين', columns(ok.map((x) => x.d.name.replace(/^قسم\s+/, '')), [{ name: 'المتوسط %', color: '#5B34A6', values: ok.map((x) => Math.round(x.m.avg || 0)) }, { name: 'الجاهزون %', color: '#1E6B52', values: ok.map((x) => pct(x.m.cat.ready, x.m.results)) }]))}
+        ${panel('توزيع مستويات الجاهزية (%)', hstack(ok.map((x) => ({ label: x.d.name, r: pct(x.m.cat.ready, x.m.results), p: pct(x.m.cat.partial, x.m.results), n: pct(x.m.cat.not, x.m.results) })), [{ k: 'r', l: 'جاهز', c: 'var(--ok)' }, { k: 'p', l: 'جاهزية جزئية', c: '#C9962B' }, { k: 'n', l: 'غير جاهز', c: 'var(--late)' }]))}</div>`;
+      const months = [...new Set(ok.flatMap((x) => Object.keys(x.m.months)))].sort().slice(-8);
+      h += `<div class="grid2 ld">${panel('تطور متوسط الدرجات شهريًا', lineChart(months.map((m) => new Date(m + '-01T00:00:00').toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'short', year: '2-digit' })), ok.map((x) => ({ name: x.d.name.replace(/^قسم\s+/, ''), color: PAL[x.i % PAL.length], values: months.map((m) => x.m.months[m] == null ? null : x.m.months[m]) })), { target: ready.ready }))}
+        ${panel('الطلاب والطالبات', columns(ok.map((x) => x.d.name.replace(/^قسم\s+/, '')), [{ name: 'الطلاب', color: '#2F6F9F', values: ok.map((x) => Math.round(x.m.mAvg || 0)) }, { name: 'الطالبات', color: '#8E3B78', values: ok.map((x) => Math.round(x.m.fAvg || 0)) }]))}</div>`;
+      const cols = CONC.map(([c]) => ({ label: c })).filter((c) => ok.some((x) => x.m.conc[c.label] != null));
+      if (cols.length) h += panel('المقررات المشتركة: متوسط الأداء في كل قسم', heat(ok.map((x) => ({ label: x.d.name, m: x.m })), cols, (r, c) => r.m.conc[c.label], { ok: ready.ready, mid: ready.partial })
+        + '<div class="small muted" style="margin-top:6px">تُقارن المقررات المتشابهة في الأقسام بالمفهوم (مثل «أساسيات الاقتصاد» في المحاسبة = 1.1 في التمويل وإدارة الأعمال).</div>');
+      const best = ok.slice().sort((a, b) => (b.m.avg || 0) - (a.m.avg || 0)), ins = [];
+      ins.push('أعلى متوسط: <b>' + E(best[0].d.name) + '</b> (' + fmtAvg(best[0].m.avg) + ')' + (best.length > 1 ? '، وأدناه: <b>' + E(best[best.length - 1].d.name) + '</b> (' + fmtAvg(best[best.length - 1].m.avg) + ')' : '') + '.');
+      ok.forEach((x) => { const w = x.m.units[0]; if (w) ins.push('أضعف مقرر في ' + E(x.d.name) + ': <b>' + E(w.label) + '</b> (' + fmtAvg(w.value) + ').'); });
+      cols.forEach((c) => { const L = ok.filter((x) => x.m.conc[c.label] != null); if (L.length > 1) { const s = L.slice().sort((a, b) => a.m.conc[c.label] - b.m.conc[c.label]); const gap = s[s.length - 1].m.conc[c.label] - s[0].m.conc[c.label]; if (gap >= 10) ins.push('فجوة ' + R1(gap) + ' نقطة في «' + E(c.label) + '» بين ' + E(s[s.length - 1].d.name) + ' و' + E(s[0].d.name) + '.'); } });
+      h += panel('🔎 قراءات سريعة', '<ul class="ld-ins">' + ins.map((t) => '<li>' + t + '</li>').join('') + '</ul>');
+    } else h += '<div class="empty">لا توجد نتائج جاهزية بعد في الأقسام للمقارنة.</div>';
+    box.className = ''; box.innerHTML = h;
+    const sh = $q('#ldCmpShared'); if (!sh) return;
+    const T2 = await Promise.all(D.map(async (d, i) => { let t = null, c = null; try { t = await trainingOf(d.id); } catch (e) {} try { c = await cloSysOf(d.id); } catch (e) {} return { d, i, t, c }; }));
+    let s = `<div class="grid2 ld">${panel('التدريب الميداني حسب القسم', hstack(T2.filter((x) => x.t).map((x) => ({ label: x.d.name, ok: x.t.st.ok, wait: x.t.st.wait, no: x.t.st.no, none: x.t.st.none })), [{ k: 'ok', l: 'مقبول', c: 'var(--ok)' }, { k: 'wait', l: 'بانتظار', c: '#C9962B' }, { k: 'no', l: 'مرفوض', c: 'var(--late)' }, { k: 'none', l: 'بلا جهة', c: '#AEB8B4' }]))}
+      ${panel('قياس مخرجات التعلم: نسبة الشعب المعتمدة', hbars(T2.filter((x) => x.c && x.c.secs).map((x) => ({ label: x.d.name, value: pct(x.c.st.accepted, x.c.secs), color: PAL[x.i % PAL.length], sub: x.c.st.accepted + ' من ' + x.c.secs + ' شعبة' })), { max: 100 }))}</div>`;
+    s += panel('جدول الأنظمة المشتركة', table(['القسم', 'طلاب التدريب', 'مقبول', 'بانتظار', 'بلا جهة', 'مقررات القياس', 'الشعب', 'المعتمد', 'أعيد للتعديل'], T2.map((x) => [E(x.d.name), x.t ? x.t.n : '—', x.t ? x.t.st.ok : '—', x.t ? x.t.st.wait : '—', x.t ? x.t.st.none : '—', x.c ? x.c.courses : '—', x.c ? x.c.secs : '—', x.c ? x.c.st.accepted : '—', x.c ? x.c.st.returned : '—'])));
+    sh.className = ''; sh.innerHTML = s;
+  }
+
+  /* ---------- صفحة تحليل الجاهزية لقسم ---------- */
+  function pgAnalysis() { const dept = selDept(); VIEW.dept = dept;
+    return hero('تحليل الجاهزية — ' + dName(dept), 'توزيع الدرجات، المقررات، الاختبارات، الطلاب الأكثر حاجة للدعم', 'ana') + `<div id="ldAna" data-dept="${E(dept)}" class="ld-load">جارٍ التحليل…</div></div></div>`; }
+  async function fillAnalysis() {
+    const box = $q('#ldAna'); if (!box) return; let m = null; try { m = await deptAnalytics(box.dataset.dept); } catch (e) { box.innerHTML = '<div class="empty">تعذّر التحميل: ' + E(e.message || e) + '</div>'; return; }
+    if (!m || !m.results) { box.className = ''; box.innerHTML = '<div class="empty">لا توجد نتائج جاهزية لهذا القسم بعد.</div>'; return; }
+    let h = `<p class="ld-note">آخر تحديث: ${m.at ? fmtDT(m.at) : '—'} · يشمل ${m.online} نتيجة من الاختبارات الإلكترونية · حد الجاهزية ${m.ready}% والجزئية ${m.partial}%</p>`;
+    h += stats([[m.students, 'الطلاب'], [m.takers, 'اختبروا'], [m.results, 'النتائج'], [fmtAvg(m.avg), 'متوسط الدرجات'], [bp(m.cat.ready, m.results), 'نسبة الجاهزين', 'good'], [m.atRisk.length, 'دون الجاهزية الجزئية', m.atRisk.length ? 'bad' : '']]);
+    h += `<div class="grid2 ld">${panel('توزيع الدرجات', columns(['0–19', '20–39', '40–59', '60–79', '80–100'], [{ name: 'عدد النتائج', color: '#5B34A6', values: m.bins }]))}
+      ${panel('مستويات الجاهزية', donut([{ label: 'جاهز', value: m.cat.ready, color: 'var(--ok)' }, { label: 'جاهزية جزئية', value: m.cat.partial, color: '#C9962B' }, { label: 'غير جاهز', value: m.cat.not, color: 'var(--late)' }], 'نتيجة'))}</div>`;
+    h += `<div class="grid2 ld">${panel('الأداء حسب المقرر (الأضعف أولًا)', hbars(m.units.slice(0, 12).map((u) => ({ label: u.label, value: u.value, color: u.value >= m.ready ? 'var(--ok)' : u.value >= m.partial ? '#C9962B' : 'var(--late)' })), { max: 100, target: m.ready }))}
+      ${panel('تطور المتوسط شهريًا', lineChart(Object.keys(m.months).sort().slice(-8).map((k) => new Date(k + '-01T00:00:00').toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'short', year: '2-digit' })), [{ name: 'المتوسط', color: '#5B34A6', values: Object.keys(m.months).sort().slice(-8).map((k) => m.months[k]) }], { target: m.ready }))}</div>`;
+    h += panel('نتائج الاختبارات', table(['الاختبار', 'التاريخ', 'المختبرون', 'المتوسط', 'الجاهزون'], m.exams.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map((e) => [E(e.name), E(e.date || '—'), e.n, fmtAvg(e.avg), e.ready + ' (' + bp(e.ready, e.n) + ')'])));
+    h += `<div class="grid2 ld">${panel('المقررات بالتفصيل', table(['المقرر', 'عدد الإجابات', 'المتوسط'], m.units.map((u) => [E(u.label), u.n, `<b class="${u.value >= m.ready ? 'good' : u.value < m.partial ? 'bad' : ''}">${fmtAvg(u.value)}</b>`])))}
+      ${panel('الطلاب الأكثر حاجة للدعم (آخر نتيجة)', table(['الطالب', 'الرقم الجامعي', 'الدرجة'], m.atRisk.map((s) => [E(s.name), '<bdi>' + E(s.uid) + '</bdi>', `<b class="bad">${fmtAvg(s.score)}</b>`])))}</div>`;
+    box.className = ''; box.innerHTML = h;
+  }
+  /* الربط: تبويبات في الصفحة الرئيسية للوحة، وتوجيه العرضين الجديدين */
+  { const _home = pgLeadHome; pgLeadHome = function () { return _home.apply(this, arguments).replace('<div id="leadBody">', viewTabs('') + '<div id="leadBody">'); }; }
+  { const _g2 = go; go = function (page, opts) {
+      if (page === 'lead' && opts && (opts.view === 'cmp' || opts.view === 'ana') && allowed()) {
+        VIEW = Object.assign({ page }, opts); try { $q('#side').classList.remove('open'); $q('#main').classList.remove('hidden'); const th = $q('#toolHost'); if (th) th.classList.add('hidden'); } catch (e) {}
+        renderNav(); $q('#title').textContent = 'التقارير والمتابعة';
+        $q('#main').innerHTML = opts.view === 'cmp' ? (collegeView() ? pgCompare() : pgAnalysis()) : pgAnalysis(); $q('#main').scrollTop = 0;
+        if (opts.view === 'cmp' && collegeView()) fillCompare(); else fillAnalysis(); return; }
+      return _g2.apply(this, arguments); }; window.go = go; }
+  { const st = document.createElement('style'); st.textContent = '.ld-heat td,.ld-heat th{min-width:90px}.ld-ins{margin:0;padding-inline-start:20px;line-height:2}.ld-ins li{margin:2px 0}'; document.head.appendChild(st); }
+
 })();
