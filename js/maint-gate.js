@@ -32,3 +32,23 @@
     }
   }, function () {});
 })();
+
+/* v3.7 — الهوية في صفحة الاختبار وصفحة التقديم: الشعار مخفي ما لم يُفعَّل من «الهوية والمسميات»، واسم الجامعة مخفي ما لم يُطلب إظهاره */
+(function () {
+  'use strict';
+  var st = document.createElement('style'); st.id = 'brCss'; st.textContent = '.top .mk{display:none!important}'; (document.head || document.documentElement).appendChild(st);
+  var C = window.DMS_CONFIG || {}; if (!window.supabase || !C.supabaseUrl) return;
+  var RX1 = /\s*[·—–-]\s*جامعة الجوف/g, RX2 = /جامعة الجوف\s*[·—–-]?\s*/g;
+  function clean(L) {
+    var u = String(L.__uni || '').trim();
+    var sel = ['#orgSub', 'footer', '.brand p', '.top small'];
+    sel.forEach(function (s) { var els = document.querySelectorAll(s); for (var i = 0; i < els.length; i++) { var el = els[i];
+      if (el.children.length) continue; var t = el.textContent, n = t.replace(RX1, '').replace(RX2, '').replace(/\s*[—–-]\s*$/, '').trim();
+      if (n !== t.trim()) el.textContent = n; } });
+  }
+  try { var sb = window.supabase.createClient(C.supabaseUrl, C.supabaseAnonKey, { auth: { persistSession: false } });
+    sb.rpc('public_bootstrap').then(function (r) { var L = (r && r.data && r.data.settings && r.data.settings.labels) || {};
+      if (L.brandLogo === '1') st.textContent = '';
+      if (L.hideUni !== '0') { clean(L); var mo = new MutationObserver(function () { clean(L); }); mo.observe(document.body, { childList: true, subtree: true, characterData: true }); }
+    }, function () {}); } catch (e) {}
+})();

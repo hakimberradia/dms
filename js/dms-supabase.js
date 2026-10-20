@@ -1853,6 +1853,114 @@ try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(
   };
   window.dmsDirF = (k, v) => { DUI[k] = v || ''; refresh(); };
 
+  /* ================= 3.6: القيادات والصلاحيات (رؤساء الأقسام والعميد والوكلاء) ================= */
+  /* أمام كل قسم: اسم رئيسه وبريده وجواله ← حساب موحّد بصلاحية قسمه فقط.
+     العميد والوكلاء: صلاحية لوحة الكلية وكل الأقسام. التعيين يُحفظ في الخادم (دالة المستخدمين). */
+  const LDR_PH = (u) => { if (!u) return ''; const m = DIR().find((x) => dMail(x.email) === dMail(u.email)) || {}; return m.phone || ''; };
+  const ldrHead = (d) => DB.users.find((u) => u.headDept === d && u.active !== false) || null;
+  const ldrCol = (k) => DB.users.filter((u) => u.collegeRole === k && u.active !== false);
+  const ldrRoleTxt = (k) => k.startsWith('h:') ? 'رئيس ' + deptName(k.slice(2)) : k === 'dean' ? 'عميد الكلية' : 'وكيل الكلية';
+  const ldrHolder = (k) => k.startsWith('h:') ? ldrHead(k.slice(2)) : k === 'dean' ? (ldrCol('dean')[0] || null) : k.startsWith('vice:') && k !== 'vice:new' ? (DB.users.find((u) => u.id === k.slice(5)) || null) : null;
+  const ldrMsg = (u, k, pw) => `السلام عليكم ${u.name}،\nتم تعيينكم «${ldrRoleTxt(k)}» في نظام أعمال اللجان: ${location.origin + location.pathname}\n`
+    + `للدخول اختاروا «${k.startsWith('h:') ? 'لوحة رئيس القسم' : 'لوحة الكلية'}» من الصفحة الرئيسية.\nاسم المستخدم: ${dMail(u.email)}\n`
+    + (pw ? `كلمة المرور الأولية: ${pw === dInitPw(LDR_PH(u)) ? 'رقم جوالكم بدون الصفر الأول' : pw}\nسيُطلب منكم تغييرها عند أول دخول.` : 'كلمة المرور: كلمة مروركم الحالية في الموقع.');
+  function ldrRow(k, label, sub) {
+    const u = ldrHolder(k), ph = LDR_PH(u), wa = u && dPhone(ph);
+    const st = u ? `<span class="good">✅ مُعيَّن</span>${u.mustChange ? '<div class="small muted">لم يغيّر كلمة المرور الأولية بعد</div>' : ''}` : '<span class="bad small">لم يُعيَّن</span>';
+    return `<tr data-ldr="${esc(k)}"><td><b>${esc(label)}</b>${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}</td>
+      <td><input data-f="n" list="ldrDL" value="${esc(u ? u.name : '')}" placeholder="الاسم" oninput="dmsLdrFill(this)" style="min-width:150px"></td>
+      <td><input data-f="e" dir="ltr" value="${esc(u ? dMail(u.email) : '')}" placeholder="name@ju.edu.sa" style="min-width:170px"></td>
+      <td><input data-f="p" dir="ltr" value="${esc(ph)}" placeholder="05XXXXXXXX" style="width:120px"></td>
+      <td>${st}</td>
+      <td style="white-space:nowrap"><button class="btn sm primary" onclick="dmsLdrSave('${esc(k)}')">${u ? 'حفظ' : 'تعيين'}</button>${u ? ` <button class="btn sm" title="إرسال بيانات الدخول" onclick="dmsLdrSend('${esc(k)}')">📲</button> <button class="btn sm danger" onclick="dmsLdrClear('${esc(k)}')">إلغاء التعيين</button>` : ''}</td></tr>`;
+  }
+  window.dmsLeadersPanel = function () {
+    if (!isAdmin()) return '';
+    const deps = DB.departments || [], vices = ldrCol('vice');
+    const rows = deps.map((d) => ldrRow('h:' + d.id, 'رئيس ' + d.name, 'يرى ويدير قسمه فقط')).join('')
+      + `<tr><td colspan="6" class="small" style="background:#f6f6f2"><b>قيادة الكلية</b> — ترى لوحة الكلية وكل الأقسام والوحدات المشتركة</td></tr>`
+      + ldrRow('dean', 'عميد الكلية', '') + vices.map((u) => ldrRow('vice:' + u.id, 'وكيل الكلية', '')).join('') + ldrRow('vice:new', vices.length ? '➕ وكيل آخر' : 'وكيل الكلية', '');
+    return `<div class="panel" id="ldrPanel"><h3>👥 القيادات والصلاحيات</h3>
+      <div class="body small muted" style="padding-bottom:4px">اكتب أمام كل قسم اسم رئيسه وبريده وجواله ثم اضغط «تعيين»: إن لم يكن له حساب يُنشأ له حساب (اسم الدخول بريده، وكلمة المرور الأولية رقم جواله بدون الصفر الأول)، وإن كان له حساب يُربط به. رئيس القسم يرى قسمه فقط (لجانه ومهامه وجاهزيته)، والعميد والوكلاء يرون لوحة الكلية وكل الأقسام. «إلغاء التعيين» يسحب الصلاحية ولا يحذف الحساب.</div>
+      <datalist id="ldrDL">${DIR().map((m) => `<option value="${esc(m.name)}">`).join('')}</datalist>
+      <div class="tbl-wrap"><table class="t"><tr><th>المنصب</th><th>الاسم</th><th>البريد (اسم الدخول)</th><th>الجوال</th><th>الحالة</th><th></th></tr>${rows}</table></div></div>`;
+  };
+  /* اختيار اسم من الدليل يملأ بريده وجواله */
+  window.dmsLdrFill = function (inp) {
+    const tr = inp.closest('tr'), m = DIR().find((x) => dNameN(x.name) === dNameN(inp.value)); if (!m || !tr) return;
+    const e = tr.querySelector('[data-f="e"]'), p = tr.querySelector('[data-f="p"]');
+    if (m.email && !e.value) e.value = dMail(m.email); if (m.phone && !p.value) p.value = m.phone;
+  };
+  function ldrDone(u, k, pw) {
+    const ph = dPhone(LDR_PH(u)), msg = ldrMsg(u, k, pw);
+    const ov = overlay(`<div class="panel" style="width:min(560px,96vw);margin:0"><h3>${pw ? 'أُنشئ الحساب وعُيّن' : 'بيانات الدخول'} — ${esc(ldrRoleTxt(k))}</h3><div class="body">
+      <p style="margin-top:0"><b>${esc(u.name)}</b><br>اسم المستخدم: <b dir="ltr">${esc(dMail(u.email))}</b>${pw ? `<br>كلمة المرور الأولية: <b dir="ltr">${esc(pw)}</b>` : ''}</p>
+      <textarea readonly style="width:100%;min-height:130px">${esc(msg)}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${ph ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(msg)}">واتساب</a>` : ''}
+        <a class="btn" href="mailto:${encodeURIComponent(dMail(u.email))}?subject=${encodeURIComponent('بيانات الدخول — ' + ldrRoleTxt(k))}&body=${encodeURIComponent(msg)}">بريد</a>
+        <button class="btn" id="ldC">تم</button></div></div></div>`);
+    ov.querySelector('#ldC').onclick = () => ov.remove();
+  }
+  window.dmsLdrSend = function (k) { const u = ldrHolder(k); if (u) ldrDone(u, k, ''); };
+  window.dmsLdrSave = async function (k) {
+    if (!isAdmin()) return; const tr = document.querySelector(`tr[data-ldr="${k}"]`); if (!tr) return;
+    const g = (f) => tr.querySelector(`[data-f="${f}"]`).value.trim(), n = g('n'), e = dMail(g('e')), p = dPhoneStd(g('p'));
+    if (!n) { toast('اكتب الاسم'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { toast('اكتب بريدًا صحيحًا'); return; }
+    const kind = k.startsWith('h:') ? 'head' : k === 'dean' ? 'dean' : 'vice', dept = kind === 'head' ? k.slice(2) : '';
+    const old = ldrHolder(k); let acc = DB.users.find((u) => dMail(u.email) === e) || null;
+    if (!acc) { const byName = DB.users.find((u) => dNameN(u.name) === dNameN(n)); if (byName && !confirm('يوجد حساب باسم «' + byName.name + '» ببريد مختلف (' + dMail(byName.email) + ').\nهل تريد إنشاء حساب جديد بالبريد ' + e + '؟\n(اضغط «إلغاء» ثم صحّح البريد إن كان الشخص نفسه)')) return; }
+    const warn = [];
+    if (old && (!acc || old.id !== acc.id)) warn.push('سيُلغى تعيين «' + old.name + '» من «' + ldrRoleTxt(k) + '» (يبقى حسابه).');
+    if (acc && kind === 'head' && acc.headDept && acc.headDept !== dept) warn.push('«' + acc.name + '» رئيس ' + deptName(acc.headDept) + ' حاليًا، وسينتقل إلى ' + deptName(dept) + '.');
+    if (acc && kind !== 'head' && acc.collegeRole && acc.collegeRole !== kind) warn.push('«' + acc.name + '» ' + (acc.collegeRole === 'dean' ? 'عميد' : 'وكيل') + ' حاليًا، وسيصبح ' + (kind === 'dean' ? 'عميدًا' : 'وكيلًا') + '.');
+    if (acc && acc.active === false) warn.push('حساب «' + acc.name + '» موقوف، وسيُعاد تفعيله.');
+    if (!acc && !dInitPw(p)) warn.push('لا يوجد جوال صالح، فستكون كلمة المرور الأولية عشوائية تظهر لك بعد الحفظ.');
+    if (!confirm('تعيين «' + n + '» ' + ldrRoleTxt(k) + '؟' + (warn.length ? '\n\n' + warn.join('\n') : ''))) return;
+    tr.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      /* الدليل: إضافة العضو أو تحديث بريده وجواله */
+      const L = DIR(); let m = L.find((x) => dMail(x.email) === e) || L.find((x) => !x.email && dNameN(x.name) === dNameN(n));
+      if (!m) m = { id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: n, email: e, phone: p, title: '', dept: kind === 'head' ? String(deptName(dept)).replace(/^قسم\s+/, '') : '', status: 'active' };
+      else Object.assign(m, { name: n, email: e }, p ? { phone: p } : {});
+      if (m.status && m.status !== 'active') m.status = 'active';
+      dirSaveMember(m);
+      let pw = '';
+      if (!acc) { pw = await createAccount(m, {}); acc = DB.users.find((u) => dMail(u.email) === e) || null; if (!acc) throw new Error('تعذّر العثور على الحساب الجديد'); }
+      const body = { action: 'update', appId: acc.id }; if (kind === 'head') body.headDept = dept; else body.collegeRole = kind;
+      if (acc.name !== n) body.name = n; if (acc.active === false) body.active = true;
+      await usersFn(body);
+      /* رئيس القسم: الخادم يُلغي الرئيس السابق تلقائيًا. العميد/الوكيل: يُلغى السابق صراحةً */
+      if (old && old.id !== acc.id && kind !== 'head') await usersFn({ action: 'update', appId: old.id, collegeRole: '' });
+      if (kind === 'head') { const cur = DB.users.find((u) => u.id === acc.id); if (cur) { DB.users.forEach((u) => { if (u.headDept === dept && u.id !== acc.id) { u.headDept = ''; u.head = false; } }); } }
+      audit('تعيين ' + ldrRoleTxt(k), n, e + (old && old.id !== acc.id ? ' · بدلًا من ' + old.name : '')); save();
+      await reloadUsers(); refresh();
+      const nu = DB.users.find((u) => u.id === acc.id) || Object.assign({}, acc, { name: n, email: e });
+      const nk = kind === 'vice' ? 'vice:' + nu.id : k;
+      if (pw) ldrDone(nu, nk, pw); else { toast('تم التعيين: ' + n); if (confirm('تم التعيين.\nهل تريد إرسال رسالة بالتعيين وبيانات الدخول إلى ' + n + '؟')) ldrDone(nu, nk, ''); }
+    } catch (x) { alert('تعذّر التعيين: ' + x.message); tr.querySelectorAll('button').forEach((b) => { b.disabled = false; }); }
+  };
+  window.dmsLdrClear = async function (k) {
+    if (!isAdmin()) return; const u = ldrHolder(k); if (!u) return;
+    if (!confirm('إلغاء تعيين «' + u.name + '» من «' + ldrRoleTxt(k) + '»؟\nتُسحب صلاحية ' + (k.startsWith('h:') ? 'لوحة القسم' : 'لوحة الكلية') + '، ويبقى حسابه وعضوياته في اللجان كما هي.')) return;
+    try { await usersFn(k.startsWith('h:') ? { action: 'update', appId: u.id, headDept: '' } : { action: 'update', appId: u.id, collegeRole: '' });
+      audit('إلغاء تعيين ' + ldrRoleTxt(k), u.name, ''); save(); await reloadUsers(); refresh(); toast('أُلغي التعيين'); }
+    catch (x) { alert('تعذّر: ' + x.message); }
+  };
+  /* اللوحة في أعلى «إدارة الأقسام» */
+  { const _pd = window.pgDepts; window.pgDepts = function () { const h = _pd.apply(this, arguments); return isAdmin() ? window.dmsLeadersPanel() + h : h; }; }
+  /* اختيار رئيس القسم من نافذة «تعديل قسم» يُحفظ في الخادم أيضًا (كان يُحفظ في الصفحة فقط) */
+  { const _sd = window.saveDept; window.saveDept = function (id) {
+      const sel = document.getElementById('dpH'), h = sel ? sel.value : null, nm = val('dpN'), before = id ? ((ldrHead(id) || {}).id || '') : '';
+      const r = _sd.apply(this, arguments);
+      if (h === null || !isAdmin()) return r;
+      const d = id ? deptById(id) : (DB.departments || []).find((x) => x.name === nm);
+      if (!d || (h || '') === (before || '')) return r;
+      (async () => { for (let i = 0; i < 4; i++) { try {
+            if (h) await usersFn({ action: 'update', appId: h, headDept: d.id }); else if (before) await usersFn({ action: 'update', appId: before, headDept: '' });
+            await reloadUsers(); refresh(); return; } catch (x) { if (i === 3) alert('تعذّر حفظ رئيس القسم في الخادم: ' + x.message); else await new Promise((res) => setTimeout(res, 1500)); } } })();
+      return r; }; }
+
   /* ================= طلب كلمة مرور جديدة بعد 3 محاولات خاطئة ================= */
   /* العضو يطلب من شاشة الدخول، والمالك يوافق فتعود كلمة المرور إلى رقم الجوال دون الصفر الأول، ويُطلب تغييرها عند الدخول. */
   const PWF = (e) => { try { return JSON.parse(sessionStorage.getItem('dms-pwfail') || '{}')[e] || 0; } catch (x) { return 0; } };

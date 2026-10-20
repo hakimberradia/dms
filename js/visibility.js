@@ -217,5 +217,5 @@
   document.head.appendChild(st);
   try { gate(); } catch (e) {}
   /* واجهة الدخول 3.4 (المقترح ج) وزر واتساب الدعم — ملف مستقل */
-  try { if (!document.querySelector('script[src^="js/landing3.js"]')) { const sc = document.createElement('script'); sc.src = 'js/landing3.js?v=34'; document.body.appendChild(sc); } } catch (e) {}
+  try { if (!document.querySelector('script[src^="js/landing3.js"]')) { const sc = document.createElement('script'); sc.src = 'js/landing3.js?v=35'; document.body.appendChild(sc); } } catch (e) {}
 })();
