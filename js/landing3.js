@@ -27,6 +27,7 @@
       return { d, i, cs: owner() ? cs : vis, hidden: !vis.length };
     }).filter((x) => x.cs.length && (!x.hidden || owner()));
     const n = cards.length, span = Math.min(n, 3) || 1;
+    { const LY = ((D.settings || {}).labels || {}).layout; if (LY && /^[1-4]$/.test(String(LY))) { flat(String(LY), cards, shared, sysOf, tiles); return; } }
     let h = '';
     if (n) {
       h += `<div class="land-h">${E(LBL('secDepts', 'اختر قسمك'))} <span class="small muted">${E(LBL('secDeptsSub', 'جاهزية الطلاب مستقلة لكل قسم'))}</span></div>`;
@@ -42,10 +43,72 @@
         return `<button type="button" class="tile l3-sq" style="--n:${sq}" onclick="pickScope('${E(c.id)}')"><span class="l3-sq-ic" style="color:${E(c.hex || '#5A33A6')}">${ico(c.id, 30)}</span>
           <b class="tile-n">${E(c.baseName || c.name)}</b>${ch.length ? `<span class="l3-ch">${ch.map((x) => `<i>${E(x)}</i>`).join('')}</span>` : ''}<span class="l3-go">دخول</span></button>`; }).join('');
     }
-    tiles.classList.add('l3');
+    tiles.classList.add('l3'); tiles.classList.remove('lxg1', 'lxg2', 'lxg3', 'lxg4');
     tiles.innerHTML = h || '<div class="small muted" style="grid-column:1/-1">لا توجد لجان بعد.</div>';
     /* لجنة القسم إن كانت أكثر من واحدة: نافذة اختيار */
     tiles.querySelectorAll('.l3-dep').forEach((b, j) => { const cs = cards[j].cs; if (cs.length > 1) b.onclick = () => pickMany(cards[j].d, cs); });
+  }
+  /* 3.8: أشكال الواجهة البديلة — اللجنة وبرنامجها دون عناوين الأقسام والوحدات المشتركة (يُختار من «الهوية والمسميات») */
+  function flat(LY, cards, shared, sysOf, tiles) {
+    const items = [], byType = {};
+    cards.forEach(({ d, cs, hidden }) => cs.forEach((c) => { const t = c.type || c.id;
+      if (!byType[t]) { byType[t] = { c, nm: c.baseName || c.name, list: [], hidden: true }; items.push(byType[t]); }
+      byType[t].list.push({ id: c.id, label: d.name }); if (!hidden) byType[t].hidden = false; }));
+    shared.forEach((c) => items.push({ c, nm: c.baseName || c.name, list: [{ id: c.id, label: c.baseName || c.name }], hidden: false }));
+    const COL = ['#4A2A8C', '#7A3E9D', '#1F5F8B', '#1E6B52', '#8C2A4A', '#7A3E1D', '#2F5D8A'];
+    const colOf = (it, i) => { const h = String(it.c.hex || ''); return /^#[0-9a-f]{6}$/i.test(h) ? h : COL[i % COL.length]; };
+    const progOf = (it) => sysOf(it.c.id).join('، ');
+    const hidTag = (it) => it.hidden ? ' <em class="lx-hid">مخفي عن الزوار</em>' : '';
+    let h = '';
+    items.forEach((it, i) => { const col = colOf(it, i), pr = progOf(it), nm = E(it.nm), ic = ico(it.c.id, LY === '3' ? 34 : 28);
+      const multi = it.list.length > 1 ? `<small class="lx-dep">${it.list.length} أقسام</small>` : '';
+      if (LY === '1') h += `<button type="button" class="tile lx lx1" data-i="${i}"><span class="lx-ic" style="color:${col}">${ic}</span><b class="tile-n">${nm}</b>${pr ? `<span class="lx-pill">${E(pr)}</span>` : ''}${multi}${hidTag(it)}<span class="lx-go">دخول</span></button>`;
+      else if (LY === '2') h += `<button type="button" class="tile lx lx2" data-i="${i}"><span class="lx-ic" style="background:${col}">${ico(it.c.id, 28).replace(/stroke="[^"]*"/, 'stroke="#fff"')}</span><span class="lx-t"><b class="tile-n">${nm}</b>${pr ? `<small>البرنامج: ${E(pr)}</small>` : ''}${multi}${hidTag(it)}</span><span class="lx-go">دخول ←</span></button>`;
+      else if (LY === '3') h += `<button type="button" class="tile lx lx3" data-i="${i}" style="background:linear-gradient(135deg,${col},${col}cc)"><span class="lx-ic">${ic}</span><span class="lx-t"><b class="tile-n">${nm}</b>${pr ? `<small>${E(pr)}</small>` : ''}${multi}${hidTag(it)}<span class="lx-go">دخول ←</span></span></button>`;
+      else h += `<button type="button" class="tile lx lx4" data-i="${i}" style="--c:${col}"><span class="lx-bd"><span class="lx-ic" style="background:${col}1a;color:${col}">${ic}</span><span class="lx-t"><b class="tile-n">${pr ? E(pr) : nm}</b><small>${pr ? 'تشرف عليه: ' + nm : ''}</small>${multi}${hidTag(it)}</span></span><span class="lx-ft"><span>الدخول إلى البرنامج</span><span>←</span></span></button>`;
+    });
+    tiles.classList.add('l3'); tiles.className = tiles.className.replace(/\blxg[1-4]\b/g, '').trim() + ' lxg' + LY;
+    tiles.innerHTML = h || '<div class="small muted">لا توجد لجان بعد.</div>';
+    tiles.querySelectorAll('.lx').forEach((b) => { const it = items[+b.getAttribute('data-i')];
+      b.onclick = () => it.list.length > 1 ? pickMany({ name: it.nm + ' — اختر القسم' }, it.list.map((x) => ({ id: x.id, name: x.label }))) : pickScope(it.list[0].id); });
+    if (!document.getElementById('lxCss')) { const st = document.createElement('style'); st.id = 'lxCss'; st.textContent = `
+  #login.l2 #tiles.l3>.tile.lx{all:unset;box-sizing:border-box;cursor:pointer;position:relative;transition:transform .15s,box-shadow .15s}
+  #login.l2 #tiles.l3>.tile.lx:hover{transform:translateY(-2px)}
+  #login.l2 .lx .tile-n{font-weight:800!important;color:inherit}
+  #login.l2 .lx-hid{font-style:normal;font-size:12px;background:#FFF4E5;color:#7A4100;border-radius:8px;padding:1px 8px}
+  #login.l2 .lx-dep{font-size:12.5px;opacity:.85}
+  #login.l2 #tiles.l3.lxg1{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}
+  #login.l2 #tiles.l3.lxg1>.tile.lx1{background:#fff;border:1px solid #E3DAF3;border-radius:18px;padding:22px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 8px 22px rgba(74,42,140,.08);color:#1E1240}
+  #login.l2 .lx1 .lx-ic{width:64px;height:64px;border-radius:18px;display:grid;place-items:center;background:#F1ECFA}
+  #login.l2 .lx1 .tile-n{font-size:19px;line-height:1.5}
+  #login.l2 .lx1 .lx-pill{background:#F1ECFA;color:#5A33A6;border-radius:20px;padding:4px 12px;font-size:13.5px;font-weight:700}
+  #login.l2 .lx1 .lx-go{margin-top:auto;align-self:stretch;background:#4A2A8C;color:#fff;border-radius:12px;padding:9px;font-weight:800}
+  #login.l2 #tiles.l3.lxg2{display:flex!important;flex-direction:column;gap:12px;max-width:920px;margin:0 auto}
+  #login.l2 #tiles.l3.lxg2>.tile.lx2{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #E3DAF3;border-radius:16px;padding:14px 18px;box-shadow:0 6px 16px rgba(74,42,140,.06);color:#1E1240}
+  #login.l2 .lx2 .lx-ic{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;flex:none}
+  #login.l2 .lx2 .lx-ic svg{stroke:#fff;color:#fff}
+  #login.l2 .lx2 .lx-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  #login.l2 .lx2 .tile-n{font-size:19px}#login.l2 .lx2 small{color:#6B5E8E;font-size:14.5px}
+  #login.l2 .lx2 .lx-go{background:#4A2A8C;color:#fff;border-radius:12px;padding:10px 20px;font-weight:800;white-space:nowrap}
+  #login.l2 #tiles.l3.lxg3{display:grid!important;grid-template-columns:repeat(2,1fr);gap:20px}
+  #login.l2 #tiles.l3.lxg3>.tile.lx3{overflow:hidden;border-radius:22px;padding:24px;color:#fff;min-height:150px;display:flex;gap:18px;align-items:center;box-shadow:0 10px 26px rgba(74,42,140,.18)}
+  #login.l2 #tiles.l3.lxg3>.tile.lx3:last-child:nth-child(odd){grid-column:1/-1}
+  #login.l2 .lx3:after{content:"";position:absolute;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.09);left:-50px;bottom:-70px;pointer-events:none}
+  #login.l2 .lx3 .lx-ic{width:62px;height:62px;border-radius:16px;background:rgba(255,255,255,.16);display:grid;place-items:center;flex:none}
+  #login.l2 .lx3 .lx-ic svg{stroke:#fff;color:#fff}
+  #login.l2 .lx3 .lx-t{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+  #login.l2 .lx3 .tile-n{font-size:22px;color:#fff}#login.l2 .lx3 small{opacity:.92;font-size:15px}
+  #login.l2 .lx3 .lx-go{margin-top:10px;background:#fff;color:#3a2470;border-radius:12px;padding:8px 16px;font-weight:800;position:relative;z-index:1}
+  #login.l2 #tiles.l3.lxg4{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px}
+  #login.l2 #tiles.l3.lxg4>.tile.lx4{background:#fff;border-radius:18px;overflow:hidden;border:1px solid #E3DAF3;border-top:8px solid var(--c);box-shadow:0 8px 22px rgba(74,42,140,.08);display:flex;flex-direction:column;color:#1E1240}
+  #login.l2 .lx4 .lx-bd{padding:20px;display:flex;gap:14px;align-items:flex-start;flex:1}
+  #login.l2 .lx4 .lx-ic{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;flex:none}
+  #login.l2 .lx4 .lx-t{display:flex;flex-direction:column;gap:4px}
+  #login.l2 .lx4 .tile-n{font-size:20px;line-height:1.4}#login.l2 .lx4 small{color:#6B5E8E;font-size:14px}
+  #login.l2 .lx4 .lx-ft{border-top:1px solid #EFE9F8;padding:12px 20px;display:flex;justify-content:space-between;color:#5A33A6;font-weight:800}
+  @media (max-width:700px){#login.l2 #tiles.l3.lxg3{grid-template-columns:1fr}#login.l2 #tiles.l3.lxg1{grid-template-columns:repeat(2,1fr);gap:12px}
+    #login.l2 #tiles.l3.lxg1>.tile.lx1{padding:16px 10px}#login.l2 .lx1 .tile-n{font-size:16px}#login.l2 .lx2 .lx-go{padding:9px 12px}#login.l2 .lx2 .tile-n{font-size:17px}
+    #login.l2 #tiles.l3.lxg2>.tile.lx2{padding:12px;gap:12px}#login.l2 #tiles.l3.lxg4{grid-template-columns:1fr}#login.l2 .lx3 .tile-n{font-size:19px}}`; document.head.appendChild(st); }
   }
   function pickMany(d, cs) {
     let m = document.getElementById('l3Pick'); if (m) m.remove();
@@ -217,6 +280,9 @@
         <div class="formgrid" style="margin-top:8px"><label class="f">النص الرئيسي في الشريط العلوي<input id="brName" value="${E(L.brandName || '')}" placeholder="${E(brandName())}"></label>
           <label class="f">النص الصغير تحته (اتركه فارغًا للافتراضي)<input id="brSub" value="${E(L.brandSub || '')}" placeholder="${E(brandSub())}"></label></div>
         <style>${swCss}</style><div style="margin:12px 0 6px;font-weight:700">خلفية صفحة الدخول</div><div style="display:flex;gap:12px;flex-wrap:wrap">${Object.keys(BG).map(sw).join('')}</div>
+        <div style="margin:16px 0 6px;font-weight:700">شكل عرض اللجان في صفحة الدخول</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">${[['', 'الحالي: الأقسام ثم الوحدات المشتركة'], ['1', '1 — بطاقات موحدة'], ['2', '2 — قائمة أفقية'], ['3', '3 — بطاقات ملونة كبيرة'], ['4', '4 — البرنامج أولًا']].map(([v, l]) => `<label style="display:flex;gap:6px;align-items:center;border:1.5px solid ${String(L.layout || '') === v ? '#6A3FB5' : '#ddd'};border-radius:10px;padding:8px 12px;cursor:pointer;font-size:13.5px"><input type="radio" name="dmsLay" value="${v}" ${String(L.layout || '') === v ? 'checked' : ''} style="width:auto"> ${l}</label>`).join('')}</div>
+        <p class="small muted" style="margin:6px 0 0">في الأشكال 1–4 تظهر كل لجنة واسم برنامجها دون عناوين الأقسام والوحدات المشتركة. لجنة موجودة في أكثر من قسم (مثل الجاهزية) تظهر بطاقة واحدة، وعند الضغط عليها يختار الزائر قسمه.</p>
         <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" onclick="dmsBrandSave()">حفظ</button><button class="btn" onclick="dmsBrandPreview()">👁 معاينة صفحة الدخول</button></div>
         <p class="small muted" style="margin-bottom:0">التغيير يظهر للجميع في صفحة الدخول بعد الحفظ مباشرة. الخلفيات رسوم مصممة داخل الموقع، فلا تحتاج إلى صور خارجية ولا تبطئ التحميل.</p></div></div>` + h; }; }
   window.dmsBrandSave = function () {
@@ -224,6 +290,7 @@
     L.brandLogo = g('brLogo').checked ? '1' : '0'; L.hideUni = g('brUni').checked ? '1' : '0';
     L.brandName = g('brName').value.trim(); L.brandSub = g('brSub').value.trim();
     const r = document.querySelector('input[name="dmsBg"]:checked'); L.bgTheme = r ? r.value : 'none';
+    const ly = document.querySelector('input[name="dmsLay"]:checked'); L.layout = ly ? ly.value : '';
     try { audit('الهوية البصرية', 'الشعار: ' + (L.brandLogo === '1' ? 'ظاهر' : 'مخفي') + '، اسم الجامعة: ' + (L.hideUni ? 'مخفي' : 'ظاهر') + '، الخلفية: ' + BG[L.bgTheme].n, ''); } catch (e) {}
     save(); applyBrand(); refresh(); toast('حُفظت الهوية البصرية');
   };
